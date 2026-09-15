@@ -1,0 +1,22 @@
+services:
+  relay:
+    build: .
+    image: tweet-relay:latest
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./state:/data
+      # Source mounted for fast iteration; the image is self-contained without it.
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+    environment:
+      STATE_PATH: /data/seen.json
+    healthcheck:
+      test: ["CMD", "python", "-m", "tweet_relay.cli", "healthcheck"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

@@ -19,12 +19,14 @@ safe to deliver — every field has already been checked. Invalid input never be
 
 | Value | Detection | Default delivered? |
 |-------|-----------|-------------------|
-| `ORIGINAL` | Link author == monitored handle, no reply/quote marker | ✅ |
-| `RETWEET` | Link author != monitored handle (DD-3) | ✅ (AC-2.1) |
-| `QUOTE` | Link author == monitored handle **and** body embeds another post | ✅ (D-1) |
-| `REPLY` | Title carries the reply marker | ❌ (AC-2.3) |
+| `REPLY` | Title begins `R to @` | ❌ (AC-2.3) |
+| `RETWEET` | Title begins `RT by @` **or** link author != monitored handle | ✅ (AC-2.1) |
+| `QUOTE` | Own author, no prefix, body embeds another post | ✅ (D-1) |
+| `ORIGINAL` | Everything else | ✅ |
 
-Classification is by link structure, never by title prefix alone (DD-3).
+Evaluated **in the order listed**. Both retweet conditions are needed: the account
+retweets itself, so link-author-differs alone misses self-retweets. See plan
+Amendment A-1.
 
 ## Entity: `RelayState`
 

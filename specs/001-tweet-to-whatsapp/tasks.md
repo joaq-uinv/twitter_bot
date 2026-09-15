@@ -11,55 +11,55 @@ All commands run in the container: `docker compose run --rm relay <cmd>`
 
 ## P1 — Foundations
 
-- [ ] **T001** Package skeleton + `pyproject.toml` (deps: httpx, defusedxml,
+- [x] **T001** Package skeleton + `pyproject.toml` (deps: httpx, defusedxml,
       pydantic-settings, pytest, hypothesis, respx) + `Dockerfile` + `docker-compose.yml`
   - **Files:** `pyproject.toml`, `Dockerfile`, `docker-compose.yml`, `src/tweet_relay/__init__.py`
   - **Verify:** `docker compose build` succeeds; `pytest --version` runs in the image
-- [ ] **T002** [P] `models.py` — `Tweet`, `TweetKind`, `SourceUnavailable`, `DeliveryFailed`
+- [x] **T002** [P] `models.py` — `Tweet`, `TweetKind`, `SourceUnavailable`, `DeliveryFailed`
   - **Verify:** `pytest tests/unit/test_models.py` — **Covers:** data-model
-- [ ] **T003** Tests for handle extraction + config validation, incl. rejection of
+- [x] **T003** Tests for handle extraction + config validation, incl. rejection of
       `https://evil.com/x`, `https://x.com/../../admin`, 16-char and empty handles
   - **Verify:** fails before T004 — **Covers:** AC-5.2, E-20
-- [ ] **T004** `config.py` implementing T003
+- [x] **T004** `config.py` implementing T003
   - **Verify:** `pytest tests/unit/test_config.py` — **Covers:** FR-1, AC-5.2, E-20
 
 ## P2 — Source
 
-- [ ] **T005** Parser tests over `tests/fixtures/santtiagom_.xml`: 19 items parsed,
+- [x] **T005** Parser tests over `tests/fixtures/santtiagom_.xml`: 19 items parsed,
       kinds classified, out-of-order input, `guid`→id, `#m` stripped, host rewritten
   - **Verify:** fails before T006 — **Covers:** FR-3, FR-4, E-1
-- [ ] **T006** `sources/nitter_rss.py` parsing + classification + URL normalisation
+- [x] **T006** `sources/nitter_rss.py` parsing + classification + URL normalisation
   - **Verify:** `pytest tests/unit/test_nitter_parse.py` — **Covers:** FR-3/4/7, DD-3/4/5
-- [ ] **T007** Failover tests (respx): 1st mirror 500 → 2nd used; all fail →
+- [x] **T007** Failover tests (respx): 1st mirror 500 → 2nd used; all fail →
       `SourceUnavailable`; wrong-account channel title → `SourceUnavailable`
   - **Verify:** fails before T008 — **Covers:** FR-9, E-7
-- [ ] **T008** Failover, byte cap, timeout, no-cross-host-redirect in `nitter_rss.py`
+- [x] **T008** Failover, byte cap, timeout, no-cross-host-redirect in `nitter_rss.py`
   - **Verify:** `pytest tests/unit/test_nitter_fetch.py` — **Covers:** FR-8/9, E-9, E-18
-- [ ] **T009** **GATE (DD-9):** probe the syndication endpoint from inside the container.
+- [x] **T009** **GATE (DD-9):** probe the syndication endpoint from inside the container.
       Returns data → implement `sources/syndication.py` + tests. Still 429/blocked →
       **delete the adapter** and record resolution in `plan.md`
   - **Verify:** either its tests pass, or no `syndication.py` exists and DD-9 is updated
 
 ## P3 — State
 
-- [ ] **T010** State tests: round-trip; membership not high-water (insert an **old** ID,
+- [x] **T010** State tests: round-trip; membership not high-water (insert an **old** ID,
       assert still undelivered); 300-cap eviction; handle-change resets; corrupt/truncated
       /wrong-schema recovery; atomic write leaves no partial file; concurrent lock
   - **Verify:** fails before T011 — **Covers:** FR-2/5/6, E-6, E-16, E-17, DD-1, DD-2
-- [ ] **T011** `state.py` implementing T010
+- [x] **T011** `state.py` implementing T010
   - **Verify:** `pytest tests/unit/test_state.py`
 
 ## P4 — Sink and formatting
 
-- [ ] **T012** [P] Formatter tests: RT/quote markers, 900-char truncation with link
+- [x] **T012** [P] Formatter tests: RT/quote markers, 900-char truncation with link
       surviving, control/bidi stripping, emoji intact
   - **Verify:** fails before T013 — **Covers:** E-13, data-model rendering
-- [ ] **T013** [P] `formatter.py`
+- [x] **T013** [P] `formatter.py`
   - **Verify:** `pytest tests/unit/test_formatter.py`
-- [ ] **T014** Sink tests (respx): params encoded not interpolated; 200-with-error-body
+- [x] **T014** Sink tests (respx): params encoded not interpolated; 200-with-error-body
       → `DeliveryFailed`; 5xx retried then raises; apikey absent from logs and repr
   - **Verify:** fails before T015 — **Covers:** FR-12, FR-13, E-19
-- [ ] **T015** `sinks/callmebot.py` + `sinks/console.py`
+- [x] **T015** `sinks/callmebot.py` + `sinks/console.py`
   - **Verify:** `pytest tests/unit/test_callmebot.py`
 
 ## P5 — Pipeline

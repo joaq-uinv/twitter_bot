@@ -62,13 +62,13 @@ oldest-first; marking seen *after* each send is what gives E-5 and FR-12.
 |---|----------|----------------------|-----|
 | DD-1 | **Delivery history is a bounded set of seen IDs** | `since_id` high-water mark; timestamp cursor | Research F-3: a retweet's ID is the *original* post's ID and may be years old. A watermark would permanently suppress retweets — most of the traffic, given AC-2.1. Timestamps fail on F-2's out-of-order feed. **This is the load-bearing decision.** |
 | DD-2 | Bound the set at 300 IDs, newest-first | Unbounded; 20 | Unbounded grows forever on a volume-mounted file. 300 ≫ the 19-item feed window, so an ID cannot be evicted while still visible in the feed and be re-delivered |
-| DD-3 | Classify post kind from the **author segment of the link** | `RT by @` title prefix | The prefix is presentation text and format-dependent; the link path is structural (F-3) |
+| DD-3 | Classify by **marker prefix first, link author as corroboration** — see amendment below | Link author alone; title prefix alone | **Amended 2026-09-15 during T005.** Either signal alone is wrong: the account retweets *itself*, so link-author-differs misses self-retweets (3 of 19 fixture items); and quote-posts are indistinguishable from originals by prefix alone |
 | DD-4 | Verify channel title names the configured handle | Trust the mirror | FR-7, E-7 — a mirror could serve the wrong or a spoofed account |
 | DD-5 | Reject links not matching `/<handle>/status/<digits>` before rewriting to `x.com` | Rewrite host blindly | Blind rewriting turns an attacker-chosen path into a plausible x.com link delivered to the operator (E-10) |
 | DD-6 | Outage notification is **edge-triggered** (state carries `outage_notified`) | Notify every failed check | AC-4.3 — a multi-day outage would otherwise send hundreds of messages |
 | DD-7 | Per-check cap withholds rather than drops | Drop as stale; ignore cap | D-3; preserves FR-2 exactly-once while respecting the ~80/day ceiling |
 | DD-8 | Long-running container with internal scheduler | Host cron invoking one-shot container | R-5 — keeps scheduling inside the artefact under test and portable to any Docker host |
-| DD-9 | `syndication.py` gated for deletion | Ship it anyway | It returned 429 on every probe. §8 — an unverifiable adapter is speculative complexity |
+| DD-9 | `syndication.py` **deleted, gate failed** — see A-2 | Ship it unverified | Returned 429 on every probe from two networks. §8 — an adapter that cannot be shown to work is speculative complexity |
 
 ## Risks
 
@@ -94,3 +94,80 @@ oldest-first; marking seen *after* each send is what gives E-5 and FR-12.
 
 `syndication.py`'s gate is evaluated in P2: if it cannot return data, it is deleted and
 DD-9 is recorded as resolved-by-deletion.
+
+---
+
+## Amendment A-1 — classification rules (2026-09-15, during T005)
+
+Implementing the parser against the real fixture falsified DD-3 as originally written.
+Recorded here rather than silently implemented, per `speckit-implement`.
+
+**What was assumed:** a post is a retweet iff the link's author differs from the
+monitored handle, and the `RT by @` title prefix is unreliable presentation text.
+
+**What the fixture shows:** 3 of 19 items carry the `RT by @` prefix *with the
+monitored handle as the link author* — the account retweeting its own earlier posts.
+The link-author rule classifies these as originals. Separately, quote-posts carry no
+prefix and the monitored handle as author, making them indistinguishable from
+originals unless the body is inspected.
+
+**Revised rules**, applied in order:
+
+1. `REPLY` — title begins `R to @`
+2. `RETWEET` — title begins `RT by @` **or** link author ≠ monitored handle.
+   The prefix is Nitter's own structural template, not user content, and it is the
+   only signal that catches a self-retweet.
+3. `QUOTE` — link author == monitored handle, no prefix, and the body embeds another
+   post. Verified: items 3 and 7 embed *other* accounts' posts, while item 6 embeds
+   nothing and is a genuine original.
+4. `ORIGINAL` — everything else.
+
+**What this permits that the original decision did not:** treating the title prefix as
+a trusted signal. Justified because it is emitted by the mirror's template rather than
+supplied by the post's author — but it is still mirror-controlled, so the link-author
+check is retained as a second condition rather than replaced.
+
+**Fixture distribution under the revised rules:** 14 retweets (11 foreign-author +
+3 self), 4 quotes, 1 original, 0 replies.
+
+## Amendment A-2 — syndication adapter deleted (2026-09-15, T009 gate)
+
+The gate defined in DD-9 and T009 was evaluated by probing
+`syndication.twitter.com/srv/timeline-profile/screen-name/santtiagom_` three times
+from inside the container. All three returned **HTTP 429 "Rate limit exceeded"**,
+matching the earlier probes from the host network.
+
+**Resolution: the adapter is not implemented.** Shipping an unexercised code path that
+we have never seen succeed would violate §8, and it would be worse than absent — it
+would look like redundancy that does not exist, weakening the operator's judgement
+about how exposed the relay really is.
+
+Redundancy therefore rests entirely on the four verified mirrors (research R-1). This
+is recorded honestly in the risk register rather than papered over: if all four die,
+the remaining options are self-hosting a mirror or adopting the paid API.
+
+The endpoint may be IP-reputation-limited rather than dead, so it remains a candidate
+if the mirrors fail. `TweetSource` keeps that a single new file.
+
+## Amendment A-3 — credential leak found by test, fixed (2026-09-15, T014)
+
+The FR-13 assertion in `test_callmebot.py` failed on first run, for a real reason
+rather than a test defect.
+
+**The leak:** CallMeBot requires the API key as a **query parameter**, and `httpx`
+logs every request URL at INFO level. The key therefore appeared in ordinary
+application logs — the exact disclosure §6 and FR-13 forbid. Nothing in the
+application code logged it; a dependency did.
+
+**The fix** (`logging_setup.py`), in two layers because silencing one library does not
+generalise:
+
+1. `httpx`/`httpcore` loggers are raised to WARNING, applied on import of the sink so
+   it holds even if the app never configures logging.
+2. A `SecretRedactingFilter` on the root handler replaces the key — and its
+   URL-encoded form — anywhere in any record, whatever library emitted it.
+
+**Why this is recorded:** it is evidence that FR-13 needed to be an asserted test
+rather than a coding convention. A reviewer reading only the application code would
+have concluded the key was never logged, and been wrong.
+
