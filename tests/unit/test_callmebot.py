@@ -117,3 +117,63 @@ def test_redaction_covers_url_encoded_form():
     rec = logging.LogRecord("n", logging.INFO, "p", 1, "url=a%20b%2Fc%2Bd", None, None)
     f.filter(rec)
     assert "a%20b%2Fc%2Bd" not in rec.getMessage()
+
+
+# --- regression: the service echoes our own text back in its success body ---
+
+REAL_SUCCESS = ("<p>Message to: +34600111222<p>Text to send: {text}"
+                "<p><b>Message queued.</b> You will receive it in a few seconds.")
+
+
+@respx.mock
+@pytest.mark.parametrize("text", [
+    "why your agent throws an error at scale",
+    "this API is invalid by design",
+    "how to rotate an apikey safely",
+    "must provide more context to the model",
+    "account not registered yet",
+])
+def test_success_body_echoing_our_text_is_not_read_as_an_error(config, text):
+    """Found by live verification, not by any mock.
+
+    CallMeBot's 200 body echoes the message we sent. Scanning the whole body for
+    error words therefore judged a SUCCESSFUL send as failed whenever the post
+    itself contained one — and since the pipeline stops the batch on failure, that
+    post would be re-delivered every check while blocking everything behind it.
+    """
+    respx.get(API).mock(httpx.Response(200, text=REAL_SUCCESS.format(text=text)))
+    sink(config).send(text)          # must not raise
+
+
+@respx.mock
+def test_genuine_error_is_still_detected_when_text_is_innocuous(config):
+    respx.get(API).mock(httpx.Response(200, text="ERROR: APIKey is invalid"))
+    with pytest.raises(DeliveryFailed):
+        sink(config).send("a perfectly ordinary post")
+
+
+@respx.mock
+def test_genuine_error_detected_even_if_our_text_also_says_error(config):
+    """The echo must be removed, not used to suppress real error reporting."""
+    body = "<p>Text to send: an error occurred<p>ERROR: APIKey is invalid"
+    respx.get(API).mock(httpx.Response(200, text=body))
+    with pytest.raises(DeliveryFailed):
+        sink(config).send("an error occurred")
+
+
+@respx.mock
+def test_unrecognised_body_is_treated_as_failure(config):
+    """FR-12: never claim delivery on a response we do not understand."""
+    respx.get(API).mock(httpx.Response(200, text="<p>something entirely new</p>"))
+    with pytest.raises(DeliveryFailed):
+        sink(config, max_attempts=1).send("hello")
+
+
+@respx.mock
+def test_html_escaped_echo_is_also_stripped(config):
+    """The echo may be HTML-escaped, so a naive replace() would miss it."""
+    text = "5 > 3 & errors <happen>"
+    body = ("<p>Text to send: 5 &gt; 3 &amp; errors &lt;happen&gt;"
+            "<p><b>Message queued.</b>")
+    respx.get(API).mock(httpx.Response(200, text=body))
+    sink(config).send(text)          # must not raise

@@ -208,3 +208,36 @@ Both are redirected to `/tmp`. Recorded because it is a reminder that a deployme
 can break the thing that verifies it, and that "it passed earlier" is not evidence:
 the regression was only caught by re-running the full suite at the end.
 
+## Amendment A-5 — delivery success detection was wrong (2026-09-15, first real send)
+
+Found by sending one genuine message, after 261 tests were green. No mock caught it,
+because the mocks encoded what I assumed the service returns.
+
+**The real success body** (observed live):
+
+    <p>Message to: +54…<p>Text to send: <OUR MESSAGE><p><b>Message queued.</b> …
+
+**It echoes the message we sent.** The sink judged success by scanning the whole body
+for error words, so any post whose own text contained "error", "invalid", "apikey",
+"must provide" or "not registered" made a *successful* delivery read as failed.
+
+The consequence was worse than a misreport. The post is genuinely delivered, but not
+marked seen, and the pipeline stops the batch on a delivery failure — so that post
+would be re-sent on every check, forever, while blocking every post queued behind it.
+A duplicate-message loop plus a permanent stall, triggered by ordinary vocabulary for
+an account that posts about software.
+
+**Fix:** strip the echoed payload (raw and HTML-escaped) before judging, then require
+the positive `queued` marker. An unrecognised body is now treated as *not delivered*,
+per FR-12 — we never claim delivery on a response we do not understand.
+
+**A-5.1 — the fix exposed a test-isolation defect.** With real credentials finally in
+`.env`, pydantic-settings loaded them into tests asserting those values were absent,
+and the suite failed because the machine was configured. Tests now disable `.env`
+loading and clear the variables.
+
+**What this changes about the plan:** it is the strongest evidence in this project for
+`quickstart.md` step 4 existing at all. 261 passing tests, a full adversarial suite,
+and end-to-end dry runs all missed a defect that one real message exposed immediately.
+Mocks encode assumptions; only the live service refutes them.
+

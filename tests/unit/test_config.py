@@ -103,3 +103,9 @@ def test_require_delivery_names_what_is_missing():
 def test_blank_phone_allowed_but_malformed_phone_still_rejected():
     with pytest.raises(ValueError):
         Config(X_PROFILE_URL="@a", CALLMEBOT_PHONE="nonsense")
+
+
+def test_suite_does_not_read_the_operators_dotenv():
+    """Regression: a real .env once leaked credentials into tests that assert their
+    absence, so the suite failed purely because the machine was configured."""
+    assert Config.model_config.get("env_file") is None

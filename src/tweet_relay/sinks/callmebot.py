@@ -6,6 +6,7 @@ would mark posts delivered that never arrived (FR-12, E-19).
 """
 from __future__ import annotations
 
+import html
 import logging
 import re
 import time
@@ -22,7 +23,31 @@ logging.getLogger("httpx").setLevel(max(logging.WARNING,
                                         logging.getLogger("httpx").level or 0))
 
 ENDPOINT = "https://api.callmebot.com/whatsapp.php"
+
+# Observed success body (live, 2026-09-15):
+#   <p>Message to: +54...<p>Text to send: <OUR MESSAGE><p><b>Message queued.</b> ...
+# Note that it echoes our own message back. Scanning the raw body for error words
+# therefore misreads a successful send whenever the post itself contains one.
+_SUCCESS_BODY = re.compile(r"\bqueued\b", re.I)
 _ERROR_BODY = re.compile(r"\b(error|invalid|not\s+registered|must\s+provide|apikey)\b", re.I)
+
+
+def _judge(body: str, sent_text: str) -> bool | None:
+    """True = delivered, False = refused, None = unrecognised.
+
+    The echoed payload is removed first so we judge the service's own words, never
+    the post's. Both raw and HTML-escaped forms are stripped, since the echo may be
+    escaped.
+    """
+    residual = body
+    for echo in (sent_text, html.escape(sent_text), html.escape(sent_text, quote=False)):
+        if echo:
+            residual = residual.replace(echo, " ")
+    if _SUCCESS_BODY.search(residual):
+        return True
+    if _ERROR_BODY.search(residual):
+        return False
+    return None
 
 
 class CallMeBotSink:
@@ -67,11 +92,18 @@ class CallMeBotSink:
                         last_error = f"HTTP {response.status_code}"
                     elif response.status_code >= 400:
                         raise DeliveryFailed(f"rejected with HTTP {response.status_code}")
-                    elif _ERROR_BODY.search(body):
-                        # A 200 that describes a failure (E-19).
-                        raise DeliveryFailed(f"service reported an error: {body[:120]!r}")
                     else:
-                        return
+                        verdict = _judge(body, message)
+                        if verdict is True:
+                            return
+                        if verdict is False:
+                            # A 200 that describes a failure (E-19).
+                            raise DeliveryFailed(
+                                f"service reported an error: {body[:120]!r}")
+                        # FR-12: an unrecognised body is not evidence of delivery.
+                        raise DeliveryFailed(
+                            f"unrecognised response, not treating as delivered: "
+                            f"{body[:120]!r}")
                 except httpx.HTTPError as exc:
                     last_error = type(exc).__name__
                 if attempt < self.max_attempts:
