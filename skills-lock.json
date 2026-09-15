@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "skills": {
+    "skill-create": {
+      "source": "skillscatalog/registry",
+      "sourceType": "github",
+      "skillPath": "skills/skill-create/SKILL.md",
+      "computedHash": "bbb5afb33d0226a5bc8eb6441cb13027adbc6ca52a49a8b35e926c677f43ce99"
+    },
+    "skill-installer": {
+      "source": "skillscatalog/registry",
+      "sourceType": "github",
+      "skillPath": "skills/skill-installer/SKILL.md",
+      "computedHash": "639f32f55fac290f468df49f911452cf7fbfbb10d1827e21d19f480fc320031d"
+    },
+    "skill-manifest-generator": {
+      "source": "skillscatalog/registry",
+      "sourceType": "github",
+      "skillPath": "skills/skill-manifest-generator/SKILL.md",
+      "computedHash": "9d599a4d06e52aba6e4caa2d4eff9245d815b557ac293061395ff91e361395f7"
+    },
+    "skill-publisher": {
+      "source": "skillscatalog/registry",
+      "sourceType": "github",
+      "skillPath": "skills/skill-publisher/SKILL.md",
+      "computedHash": "ad04fd27ba2bcbfa5e558d0e21b4f24c5a3bfdd5ddb1efc03dca00c0896c7eb3"
+    },
+    "skill-safety-scanner": {
+      "source": "skillscatalog/registry",
+      "sourceType": "github",
+      "skillPath": "skills/skill-safety-scanner/SKILL.md",
+      "computedHash": "9c5699090d66bf4e22d74210afc749c26cd41b795a607fb77f16e30e45b8d2be"
+    },
+    "skill-search": {
+      "source": "skillscatalog/registry",
+      "sourceType": "github",
+      "skillPath": "skills/skill-search/SKILL.md",
+      "computedHash": "b7e3b9a7df35278a51229dade3fdb3c6f0e2853689384d48a75d6295eec48c99"
+    },
+    "skill-validator": {
+      "source": "skillscatalog/registry",
+      "sourceType": "github",
+      "skillPath": "skills/skill-validator/SKILL.md",
+      "computedHash": "59c6213072b42cc11f11913bca5bcca2951f69c039f9e3585c14b23ed3bcfc62"
+    }
+  }
+}
