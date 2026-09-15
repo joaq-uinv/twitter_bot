@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 from . import logging_setup
@@ -13,9 +15,25 @@ from .pipeline import Pipeline
 from .sinks.callmebot import CallMeBotSink
 from .sinks.console import ConsoleSink
 from .sources.nitter_rss import NitterRssSource
-from .state import load_state
+from .state import StateUnwritable, load_state
 
 log = logging.getLogger("tweet_relay")
+
+
+# A misconfiguration is permanent: restarting cannot fix a missing credential. Under
+# `restart: unless-stopped` an immediate exit becomes a tight restart loop that floods
+# the logs, so pause first to keep the real error readable. Zero in tests.
+CONFIG_ERROR_PAUSE = float(os.environ.get("CONFIG_ERROR_PAUSE_SECONDS", "15"))
+
+
+def _config_error(message: str) -> "SystemExit":
+    print(f"Configuration error:\n\n{message}\n\nSee .env.example.", file=sys.stderr)
+    if CONFIG_ERROR_PAUSE > 0:
+        print(f"Pausing {CONFIG_ERROR_PAUSE:.0f}s before exit so this does not "
+              "restart-loop. Fix .env, then the relay starts normally.",
+              file=sys.stderr, flush=True)
+        time.sleep(CONFIG_ERROR_PAUSE)
+    return SystemExit(2)
 
 
 def _load() -> Config:
@@ -23,8 +41,7 @@ def _load() -> Config:
         return Config()
     except Exception as exc:
         # AC-5.2: refuse to start, and say what is wrong.
-        print(f"Configuration error:\n\n{exc}\n\nSee .env.example.", file=sys.stderr)
-        raise SystemExit(2)
+        raise _config_error(str(exc))
 
 
 def _setup(config: Config) -> None:
@@ -55,8 +72,7 @@ def _require_delivery_or_exit(config: Config) -> None:
     try:
         config.require_delivery()
     except ValueError as exc:
-        print(f"Configuration error:\n\n{exc}", file=sys.stderr)
-        raise SystemExit(2)
+        raise _config_error(str(exc))
 
 
 def cmd_test_whatsapp(config: Config) -> int:
@@ -83,7 +99,11 @@ def cmd_run(config: Config, once: bool, dry_run: bool) -> int:
     pipeline = Pipeline(config, source, sink)
 
     if once:
-        result = pipeline.run_once()
+        try:
+            result = pipeline.run_once()
+        except StateUnwritable as exc:
+            print(f"Cannot start:\n\n{exc}", file=sys.stderr)
+            return 2
         print(f"sent={result.sent} withheld={result.withheld} "
               f"bootstrapped={result.bootstrapped} outage={result.outage}")
         return 1 if result.outage else 0

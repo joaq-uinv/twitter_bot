@@ -218,3 +218,22 @@ def test_empty_account_is_silent_not_an_outage(config):
     sink.sent.clear()
     result = Pipeline(config, FakeSource([]), sink).run_once()
     assert sink.sent == [] and result.outage is False
+
+
+def test_every_run_path_logs_completion(config, caplog):
+    """Observability: 'check complete' must appear on the bootstrap and outage paths
+    too, not only the normal one — otherwise log-based monitoring silently misses them."""
+    import logging
+    with caplog.at_level(logging.INFO):
+        Pipeline(config, FakeSource([tweet(1, minutes=1)]), RecordingSink()).run_once()
+    assert "check complete" in caplog.text            # bootstrap path
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        Pipeline(config, FakeSource(error="down"), RecordingSink()).run_once()
+    assert "check complete" in caplog.text            # outage path
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        Pipeline(config, FakeSource([tweet(1, minutes=1)]), RecordingSink()).run_once()
+    assert "check complete" in caplog.text            # normal path

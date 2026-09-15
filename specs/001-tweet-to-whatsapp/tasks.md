@@ -78,23 +78,23 @@ All commands run in the container: `docker compose run --rm relay <cmd>`
 
 ## P6 — Adversarial (`tests/adversarial/`)
 
-- [ ] **T019** Hostile XML: XXE (assert entity unresolved), billion-laughs (bounded
+- [x] **T019** Hostile XML: XXE (assert entity unresolved), billion-laughs (bounded
       time), decompression bomb, 50MB body, truncated XML, valid-XML-not-RSS, items
       missing guid/link/pubDate — **Covers:** FR-8, E-8, E-9, E-10
-- [ ] **T020** [P] Malicious content: wrong-account channel title; link to
+- [x] **T020** [P] Malicious content: wrong-account channel title; link to
       `evil.com/status/1`; guid non-numeric/negative/10³⁰; duplicate guids; pubDate
       future/unparseable/1970; text with script tags, U+202E, zero-width, NUL, 10k
       chars, 4-byte emoji — **Covers:** FR-7, E-3, E-7, E-10, E-12
-- [ ] **T021** [P] Sink injection: text containing `&text=`, `&apikey=`, `#`, newlines;
+- [x] **T021** [P] Sink injection: text containing `&text=`, `&apikey=`, `#`, newlines;
       assert outgoing query parses back to exactly one `text` param; suite-wide log
       capture asserts the apikey never appears — **Covers:** FR-13, E-11
-- [ ] **T022** [P] SSRF/config: `NITTER_INSTANCES` with `http://169.254.169.254/`,
+- [x] **T022** [P] SSRF/config: `NITTER_INSTANCES` with `http://169.254.169.254/`,
       `file:///etc/passwd`, `http://localhost:22`, `http://10.0.0.1` all rejected;
       https-only enforced — **Covers:** E-20
-- [ ] **T023** [P] Network: all mirrors 429/500/timeout → one notification, state
+- [x] **T023** [P] Network: all mirrors 429/500/timeout → one notification, state
       untouched; hanging mirror hits timeout; 200 empty body; cross-host redirect not
       followed — **Covers:** FR-9, FR-10, E-18
-- [ ] **T024** [P] Property-based (hypothesis): for any feed permutation the delivered
+- [x] **T024** [P] Property-based (hypothesis): for any feed permutation the delivered
       **set** is identical and ordering is chronological; N runs over one feed deliver
       each post exactly once — **Covers:** FR-2, FR-3, FR-5, E-1, E-2
 
@@ -102,11 +102,11 @@ All commands run in the container: `docker compose run --rm relay <cmd>`
 
 - [x] **T025** `scheduler.py` — interval + jitter, SIGTERM-aware
   - **Verify:** `pytest tests/unit/test_scheduler.py`; `docker compose up` logs 2 cycles
-- [ ] **T026** Compose healthcheck on `last_success` age + log rotation; `.env.example`
+- [x] **T026** Compose healthcheck on `last_success` age + log rotation; `.env.example`
   - **Verify:** `docker compose ps` reports healthy
-- [ ] **T027** Live integration (marked, excluded by default): real mirror fetch + real
+- [x] **T027** Live integration (marked, excluded by default): real mirror fetch + real
       WhatsApp send — **Verify:** `pytest -m live`; message arrives on the phone
-- [ ] **T028** Full `quickstart.md` walkthrough on a clean checkout
+- [x] **T028** Full `quickstart.md` walkthrough on a clean checkout
   - **Verify:** every step executes as written
 
 ---

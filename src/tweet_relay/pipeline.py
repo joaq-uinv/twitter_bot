@@ -66,6 +66,7 @@ class Pipeline:
                     save_state(cfg.STATE_PATH, state)
                 else:
                     log.warning("sources still unavailable: %s", exc)
+                log.info("check complete: outage (no sources reachable)")
                 return result
 
             if state.outage_notified:
@@ -87,6 +88,8 @@ class Pipeline:
                 except DeliveryFailed as exc:
                     log.error("could not deliver liveness message: %s", exc)
                 result.bootstrapped = True
+                log.info("check complete: bootstrapped %d existing posts as seen",
+                         len(tweets))
                 return result
 
             # Membership test, never a high-water mark (DD-1).

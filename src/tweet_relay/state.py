@@ -21,6 +21,10 @@ log = logging.getLogger(__name__)
 MAX_SEEN = 300   # DD-2
 
 
+class StateUnwritable(Exception):
+    """The state directory cannot be written. Almost always a mount ownership issue."""
+
+
 class RelayState:
     __slots__ = ("handle", "seen_ids", "bootstrapped", "outage_notified", "last_success")
 
@@ -133,7 +137,16 @@ def state_lock(path: str | Path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = path.with_suffix(path.suffix + ".lock")
-    with open(lock_path, "w") as fh:
+    try:
+        fh = open(lock_path, "w")
+    except PermissionError as exc:
+        raise StateUnwritable(
+            f"cannot write state at {path.parent} ({exc.strerror}).\n"
+            "The container user must own the mounted state directory. Set HOST_UID "
+            "and HOST_GID in .env to your own ids (`id -u`, `id -g`), or run:\n"
+            f"  sudo chown -R $(id -u):$(id -g) ./state"
+        ) from None
+    with fh:
         fcntl.flock(fh, fcntl.LOCK_EX)
         try:
             yield

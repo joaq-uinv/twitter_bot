@@ -25,6 +25,9 @@ packages = ["src/tweet_relay"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# /app is owned by the image user, but the container may run as the host uid so the
+# state bind-mount is writable. Keep the cache somewhere always writable.
+cache_dir = "/tmp/pytest_cache"
 pythonpath = ["src"]
 markers = ["live: hits real network; excluded by default (constitution §5)"]
 addopts = "-m 'not live' --strict-markers -q"

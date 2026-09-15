@@ -39,17 +39,26 @@ def _classify(title: str, link_author: str, handle: str, description: str) -> Tw
     return TweetKind.ORIGINAL
 
 
-def _parse_link(raw: str) -> tuple[str, int] | None:
+def _parse_link(raw: str, expected_host: str | None = None) -> tuple[str, int] | None:
     """Extract (author, id) from a mirror link, or None if it is not a post link.
 
     DD-5: a link whose shape we do not recognise is discarded rather than rewritten.
     Blind host-rewriting would turn an attacker-chosen path into a plausible x.com
     link delivered to the operator.
+
+    An unexpected link host is logged but NOT rejected. Rejecting it was tried and
+    reverted: mirrors legitimately serve canonical links pointing at another host, so
+    pinning silently emptied a working feed — turning a healthy relay into a silent
+    no-op, which §7 forbids. The host is discarded anyway when the URL is rebuilt from
+    validated parts, so pinning bought no security for that risk.
     """
     try:
         parsed = urlparse((raw or "").split("#")[0])
     except ValueError:
         return None
+    if expected_host and (parsed.hostname or "").lower() != expected_host.lower():
+        log.warning("link host %r differs from mirror %r; URL will be rebuilt",
+                    parsed.hostname, expected_host)
     m = STATUS_PATH.match(parsed.path or "")
     if not m:
         return None
@@ -79,7 +88,7 @@ def _parse_date(raw: str | None) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
-def parse_feed(raw: bytes, handle: str) -> list[Tweet]:
+def parse_feed(raw: bytes, handle: str, expected_host: str | None = None) -> list[Tweet]:
     """Parse a feed into validated posts, sorted oldest first.
 
     Malformed items are dropped, not raised (contract guarantee 1). The whole feed is
@@ -104,7 +113,7 @@ def parse_feed(raw: bytes, handle: str) -> list[Tweet]:
     seen_ids: set[int] = set()
     for item in channel.findall("item"):
         item_title = (item.findtext("title") or "").strip()
-        parsed_link = _parse_link(item.findtext("link") or "")
+        parsed_link = _parse_link(item.findtext("link") or "", expected_host)
         if parsed_link is None:
             log.warning("dropping item with unrecognised link")
             continue
@@ -192,7 +201,8 @@ class NitterRssSource:
                     body = self._get(client, url)
                     if not body.strip():
                         raise SourceUnavailable("empty body")
-                    tweets = parse_feed(body, handle)
+                    tweets = parse_feed(body, handle,
+                                        expected_host=urlparse(base).hostname)
                     log.info("fetched %d posts from %s", len(tweets), base)
                     return tweets
                 except SourceUnavailable as exc:

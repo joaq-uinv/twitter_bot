@@ -3,6 +3,10 @@ services:
     build: .
     image: tweet-relay:latest
     env_file: .env
+    # Run as the host user so the bind-mounted ./state directory is writable.
+    # Without this the container's own uid cannot write to a host-owned directory
+    # and every check fails on the state lock.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     restart: unless-stopped
     volumes:
       - ./state:/data
@@ -11,6 +15,8 @@ services:
       - ./tests:/app/tests:ro
     environment:
       STATE_PATH: /data/seen.json
+      # Slows the restart loop when .env is incomplete, so the error stays readable.
+      CONFIG_ERROR_PAUSE_SECONDS: "15"
     healthcheck:
       test: ["CMD", "python", "-m", "tweet_relay.cli", "healthcheck"]
       interval: 60s

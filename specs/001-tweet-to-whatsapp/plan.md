@@ -171,3 +171,40 @@ generalise:
 rather than a coding convention. A reviewer reading only the application code would
 have concluded the key was never logged, and been wrong.
 
+## Amendment A-4 — deployment defects found by running it (2026-09-15, T028)
+
+Two defects that every unit test passed straight through, found only by executing the
+quickstart against the real container. Recorded because they are the argument for
+keeping T028 in the plan at all.
+
+**A-4.1 — the state volume was unwritable.** The image runs as its own non-root user
+(uid 10001), but `./state` on the host is owned by the operator, so the first check
+died with a bare `PermissionError` traceback on the state lock. This would have hit
+the operator on their very first `docker compose up`.
+
+Fixed by running the service as the host user (`user: "${HOST_UID:-1000}:${HOST_GID:-1000}"`,
+documented in `.env.example`), and by turning the failure into an actionable
+`StateUnwritable` message naming the exact `chown` to run. §7: a traceback is not an
+error message.
+
+**A-4.2 — misconfiguration became a restart loop.** `restart: unless-stopped` is
+correct for transient failures, but a missing credential is permanent, so the
+container exited immediately and restarted forever, flooding the log with the same
+error. Restarting cannot fix configuration.
+
+Fixed by pausing before exiting on configuration errors only, which keeps the
+diagnostic readable without weakening restart resilience for genuine runtime faults.
+
+**What this changes about the plan:** nothing structural — but it is evidence that
+"the tests pass" and "it runs" are different claims. Both defects sat in the gap
+between them.
+
+**A-4.3 — the uid fix broke the test suite.** Running as the host uid left `/app`
+unwritable for the image user, so pytest's cache and hypothesis's example database
+could not be written. `filterwarnings = ["error"]` promoted hypothesis's warning to a
+failure, and six property tests started failing — after they had previously passed.
+
+Both are redirected to `/tmp`. Recorded because it is a reminder that a deployment fix
+can break the thing that verifies it, and that "it passed earlier" is not evidence:
+the regression was only caught by re-running the full suite at the end.
+

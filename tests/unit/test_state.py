@@ -114,3 +114,19 @@ def test_outage_flag_persists(tmp_path):
     s = RelayState(handle=H); s.outage_notified = True
     save_state(p, s)
     assert load_state(p, H).outage_notified is True
+
+
+def test_unwritable_state_directory_gives_an_actionable_error(tmp_path):
+    """Found in T028: a host-owned bind mount is unwritable by the container user,
+    which produced a bare PermissionError traceback instead of a fix (§7)."""
+    import os
+    from tweet_relay.state import StateUnwritable, state_lock
+    locked = tmp_path / "ro"
+    locked.mkdir()
+    os.chmod(locked, 0o500)
+    try:
+        with pytest.raises(StateUnwritable, match="HOST_UID"):
+            with state_lock(locked / "seen.json"):
+                pass
+    finally:
+        os.chmod(locked, 0o700)
