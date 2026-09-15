@@ -80,8 +80,10 @@ class Config(BaseSettings):
                                       case_sensitive=False)
 
     X_PROFILE_URL: str
-    CALLMEBOT_PHONE: str
-    CALLMEBOT_APIKEY: SecretStr   # SecretStr keeps the key out of reprs (FR-13)
+    # Blank is allowed so `check-source` can diagnose retrieval before delivery is
+    # set up. Commands that actually deliver assert these via require_delivery().
+    CALLMEBOT_PHONE: str = ""
+    CALLMEBOT_APIKEY: SecretStr = SecretStr("")   # SecretStr keeps it out of reprs
 
     INCLUDE_RETWEETS: bool = True
     INCLUDE_REPLIES: bool = False
@@ -105,7 +107,10 @@ class Config(BaseSettings):
     @field_validator("CALLMEBOT_PHONE")
     @classmethod
     def _check_phone(cls, v: str) -> str:
-        if not PHONE_RE.match((v or "").strip()):
+        v = (v or "").strip()
+        if v == "":
+            return v
+        if not PHONE_RE.match(v):
             raise ValueError(f"CALLMEBOT_PHONE must be E.164 (e.g. +34600111222), got {v!r}")
         return v.strip()
 
@@ -115,6 +120,19 @@ class Config(BaseSettings):
         for part in [p for p in (v or "").split(",") if p.strip()]:
             _validate_instance(part)
         return v
+
+    def require_delivery(self) -> None:
+        """Raise unless delivery is fully configured. Called by commands that send."""
+        missing = []
+        if not self.CALLMEBOT_PHONE:
+            missing.append("CALLMEBOT_PHONE")
+        if not self.CALLMEBOT_APIKEY.get_secret_value():
+            missing.append("CALLMEBOT_APIKEY")
+        if missing:
+            raise ValueError(
+                f"{' and '.join(missing)} must be set to deliver messages.\n"
+                "Get a key: WhatsApp +34 644 51 95 23 with\n"
+                "  I allow callmebot to send me messages")
 
     @property
     def handle(self) -> str:

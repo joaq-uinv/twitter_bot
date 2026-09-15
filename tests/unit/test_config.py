@@ -83,3 +83,23 @@ def test_apikey_not_in_repr():
     c = cfg(X_PROFILE_URL="@a", CALLMEBOT_APIKEY="SUPERSECRET")
     assert "SUPERSECRET" not in repr(c)
     assert "SUPERSECRET" not in str(c)
+
+
+def test_delivery_credentials_may_be_blank_for_diagnostics():
+    """check-source must work before delivery is configured."""
+    c = Config(X_PROFILE_URL="@a")
+    assert c.handle == "a"
+
+
+def test_require_delivery_names_what_is_missing():
+    with pytest.raises(ValueError, match="CALLMEBOT_PHONE and CALLMEBOT_APIKEY"):
+        Config(X_PROFILE_URL="@a").require_delivery()
+    with pytest.raises(ValueError, match="CALLMEBOT_APIKEY"):
+        Config(X_PROFILE_URL="@a", CALLMEBOT_PHONE="+34600111222").require_delivery()
+    Config(X_PROFILE_URL="@a", CALLMEBOT_PHONE="+34600111222",
+           CALLMEBOT_APIKEY="k").require_delivery()   # must not raise
+
+
+def test_blank_phone_allowed_but_malformed_phone_still_rejected():
+    with pytest.raises(ValueError):
+        Config(X_PROFILE_URL="@a", CALLMEBOT_PHONE="nonsense")

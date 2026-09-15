@@ -64,16 +64,16 @@ All commands run in the container: `docker compose run --rm relay <cmd>`
 
 ## P5 — Pipeline
 
-- [ ] **T016** Pipeline tests: filtering by kind; chronological delivery; cap withholds
+- [x] **T016** Pipeline tests: filtering by kind; chronological delivery; cap withholds
       (not drops) and drains next check; bootstrap sends exactly one liveness message;
       no liveness on restart; partial-send failure keeps 1-2 seen and retries 3-5;
       outage notified once and re-armed on recovery
   - **Verify:** fails before T017
   - **Covers:** AC-1.1/1.2/1.3, AC-2.1/2.3/2.4, AC-3.1/3.2/3.3, AC-4.1/4.2/4.3,
     FR-2/3/4/10/11/12, E-5, E-14, D-2, D-3, DD-6, DD-7
-- [ ] **T017** `pipeline.py` implementing T016
+- [x] **T017** `pipeline.py` implementing T016
   - **Verify:** `pytest tests/unit/test_pipeline.py`
-- [ ] **T018** [P] `cli.py` — `run [--once] [--dry-run]`, `check-source`, `test-whatsapp`
+- [x] **T018** [P] `cli.py` — `run [--once] [--dry-run]`, `check-source`, `test-whatsapp`
   - **Verify:** `check-source` prints mirror + parsed items
 
 ## P6 — Adversarial (`tests/adversarial/`)
@@ -100,7 +100,7 @@ All commands run in the container: `docker compose run --rm relay <cmd>`
 
 ## P7 — Runtime
 
-- [ ] **T025** `scheduler.py` — interval + jitter, SIGTERM-aware
+- [x] **T025** `scheduler.py` — interval + jitter, SIGTERM-aware
   - **Verify:** `pytest tests/unit/test_scheduler.py`; `docker compose up` logs 2 cycles
 - [ ] **T026** Compose healthcheck on `last_success` age + log rotation; `.env.example`
   - **Verify:** `docker compose ps` reports healthy
