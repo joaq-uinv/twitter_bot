@@ -1,0 +1,81 @@
+# Runs the existing Docker image on a schedule instead of as a long-running
+# container. No application code changes: this reuses the `run --once` and
+# `--dry-run` flags cli.py already has. See README.md "Deployment" and plan.md
+# Design Decision DD-10 for why.
+#
+# State (state/seen.json) has no persistent disk to live on between runs, so it
+# is checked out from git, updated, and committed back — only when it actually
+# changed, to avoid commit noise on quiet cycles.
+name: Poll and relay
+
+"on":
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Render messages without sending them"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: relay-poll
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write run configuration
+        run: |
+          {
+            echo "X_PROFILE_URL=https://x.com/santtiagom_"
+            echo "CALLMEBOT_PHONE=${{ secrets.CALLMEBOT_PHONE }}"
+            echo "CALLMEBOT_APIKEY=${{ secrets.CALLMEBOT_APIKEY }}"
+            echo "INCLUDE_RETWEETS=true"
+            echo "INCLUDE_REPLIES=false"
+            echo "INCLUDE_QUOTES=true"
+            echo "MAX_MESSAGES_PER_RUN=10"
+            echo "STATE_PATH=/data/seen.json"
+            # Matches the checkout's owner, not any developer's laptop (Amendment
+            # A-4.1: a mismatch here makes the state volume unwritable).
+            echo "HOST_UID=$(id -u)"
+            echo "HOST_GID=$(id -g)"
+          } > .env
+
+      - name: Build image
+        run: docker compose build
+
+      - name: Run one check (dry run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: docker compose run --rm relay run --once --dry-run
+
+      - name: Run one check
+        if: "!(github.event_name == 'workflow_dispatch' && inputs.dry_run)"
+        run: docker compose run --rm relay run --once
+
+      - name: Persist state if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state/seen.json
+          git diff --cached --quiet || git commit -m "state: update seen ids [skip ci]"
+          git push
+
+      # The app's own FR-10 outage alert only fires once app code is running.
+      # A build failure or crash never reaches that code at all, so this is the
+      # only thing that would notice — constitution §7, fail loud.
+      - name: Alert on workflow failure
+        if: failure()
+        run: |
+          curl -fsS -G "https://api.callmebot.com/whatsapp.php" \
+            --data-urlencode "phone=${{ secrets.CALLMEBOT_PHONE }}" \
+            --data-urlencode "text=⚠️ tweet-relay GitHub Actions workflow failed (not a source outage — check the run log): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --data-urlencode "apikey=${{ secrets.CALLMEBOT_APIKEY }}" \
+            > /dev/null

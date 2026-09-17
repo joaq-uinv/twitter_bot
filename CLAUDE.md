@@ -52,9 +52,27 @@ docker compose run --rm relay pytest tests/adversarial -v
 docker compose run --rm relay check-source      # which mirror answered, what parsed
 docker compose run --rm relay run --once --dry-run
 docker compose run --rm relay test-whatsapp     # sends one real message
-docker compose up -d                            # the actual relay
+docker compose up -d                            # local/dev only, see below
 docker compose logs -f relay
 ```
+
+## Deployment
+
+Production is **GitHub Actions** (`.github/workflows/poll.yml`), not a long-running
+container — see plan.md Amendment A-6. This changed nothing about the application:
+the workflow just calls the same `run --once` flag on a schedule. State moved from
+the Docker volume to git commits, so `state/seen.json` is tracked (via `.gitignore`'s
+`!state/seen.json` exception), not ignored.
+
+```bash
+gh workflow run poll.yml -f dry_run=true   # manual verification, sends nothing
+gh run watch
+gh secret list                             # confirm CALLMEBOT_PHONE/APIKEY are set
+```
+
+`docker compose up -d` still works for local development, but never run it against
+the same account at the same time as the Actions schedule — each keeps its own
+`seen.json`, so they'd double-deliver anything published after they diverge.
 
 ## Project facts that are easy to get wrong
 

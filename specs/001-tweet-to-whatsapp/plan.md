@@ -69,6 +69,7 @@ oldest-first; marking seen *after* each send is what gives E-5 and FR-12.
 | DD-7 | Per-check cap withholds rather than drops | Drop as stale; ignore cap | D-3; preserves FR-2 exactly-once while respecting the ~80/day ceiling |
 | DD-8 | Long-running container with internal scheduler | Host cron invoking one-shot container | R-5 — keeps scheduling inside the artefact under test and portable to any Docker host |
 | DD-9 | `syndication.py` **deleted, gate failed** — see A-2 | Ship it unverified | Returned 429 on every probe from two networks. §8 — an adapter that cannot be shown to work is speculative complexity |
+| DD-10 | **GitHub Actions cron as a second deployment target**, replacing the long-running container for production use | Oracle/GCP Always-Free VMs (real but need a new account, a card, and ongoing OS patching); Cloudflare Containers (no free tier — requires Workers Paid at $5/mo minimum, and billed per-active-ms, wrong shape for a persistent poller); Fly.io free tier (discontinued in 2024, now a 7-day trial) | Zero new accounts, zero cards, zero application code changes — `cli.py`'s existing `--once`/`--dry-run` flags were already the right interface. State moves from a Docker volume to git commits, which is *more* durable (versioned, inspectable) not less. This repo is public, so Actions minutes are unconditionally free regardless of run frequency |
 
 ## Risks
 
@@ -241,3 +242,48 @@ loading and clear the variables.
 and end-to-end dry runs all missed a defect that one real message exposed immediately.
 Mocks encode assumptions; only the live service refutes them.
 
+## Amendment A-6 — GitHub Actions added as the production deployment (2026-09-17)
+
+The operator wanted the relay to run without keeping a personal machine on. Two paid
+services were ruled out immediately by research: Cloudflare Containers has no free
+tier (Workers Paid, $5/mo minimum) and is billed per active millisecond — architecturally
+wrong for a persistent poller, not just expensive. Fly.io's free tier was discontinued
+in 2024; what remains is a 7-day trial requiring a card.
+
+Real always-on free VMs exist (Oracle Cloud, Google Cloud e2-micro) and were seriously
+considered, but both need a new cloud account, a card on file, and ongoing OS
+maintenance the operator would then own. GitHub Actions needed none of that: this
+repo is already public (unconditionally free Actions minutes), already has `gh`
+authenticated, and `cli.py` already exposed `--once`/`--dry-run` — flags built during
+the original implementation without anticipating this use, which turned out to be
+exactly the interface a one-shot cron trigger needs.
+
+**What changed, concretely:**
+- `.github/workflows/poll.yml`: `schedule` cron every 15 minutes + `workflow_dispatch`
+  with a `dry_run` input for manual verification. `concurrency: group: relay-poll` is
+  the same principle as the state file lock (E-17) applied at the workflow level — two
+  overlapping runs must not race on `state/seen.json`.
+- **State moved from a Docker volume to git.** `state/seen.json` is no longer
+  gitignored; each run commits it back only when it changed, avoiding noise on quiet
+  cycles. This is a durability upgrade, not a compromise — git history is a better
+  audit trail than an opaque volume ever was.
+- `HOST_UID`/`HOST_GID` are computed from the runner (`id -u`/`id -g`) at run time,
+  not copied from any developer's machine — getting this wrong reproduces Amendment
+  A-4.1 in a new environment, so it's computed fresh every run rather than hardcoded.
+- **A failure alert independent of the app.** FR-10's outage notice fires from inside
+  the running container, so it can only fire once the container is actually running.
+  A Docker build failure or an unhandled crash never reaches that code, so a separate
+  `if: failure()` step curls CallMeBot directly — the one thing that would notice a
+  failure the app itself never got the chance to report (§7).
+
+**What did NOT change:** no application code, no test, no Dockerfile line.
+`docker compose up -d` still works unchanged for local development. This is a pure
+deployment-target addition, which is why it went through the constitution's Design
+Decisions log rather than a new spec — the relay's behavioural contract (`spec.md`)
+is identical either way.
+
+**Operational note:** running both deployments concurrently against the same account
+would double-delivery any post published after they diverge, since each maintains
+its own copy of `seen.json` independently once local's on-disk file and git's
+committed copy stop being the same bytes. The local container is stopped once the
+Actions workflow is verified working end to end.

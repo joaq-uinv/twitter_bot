@@ -62,6 +62,35 @@ again on restart.
 | Outage alerting | `NITTER_INSTANCES=https://nitter.invalid`, `run --once` | One failure notification, and only one on repeat runs |
 | Restart safety | `docker compose restart` | No post re-delivered, no liveness message |
 
+## 6. Deploy without keeping your machine on (recommended)
+
+Steps 1-5 verify everything works locally. For production, run it on GitHub Actions
+instead — no VM, no account beyond GitHub, no code changes (see Amendment A-6 in
+`plan.md` for why this beat Oracle/GCP free VMs and why Cloudflare/Fly.io don't fit).
+
+```bash
+gh secret set CALLMEBOT_PHONE      # paste the number you tested with above
+gh secret set CALLMEBOT_APIKEY     # paste the key from step 1
+gh workflow run poll.yml -f dry_run=true   # verify before it can send anything
+gh run watch
+```
+
+Confirm the dry run's log shows a normal check with no errors, then:
+
+```bash
+gh workflow run poll.yml -f dry_run=false  # one real cycle
+gh run watch
+git pull   # the workflow just committed state/seen.json back
+```
+
+The `schedule` trigger in `.github/workflows/poll.yml` is now live and runs every 15
+minutes on its own. Stop the local container so the two don't both deliver the same
+post:
+
+```bash
+docker compose down
+```
+
 ## Troubleshooting
 
 **No messages arriving.** Check `docker compose logs relay`. Silence in the logs plus

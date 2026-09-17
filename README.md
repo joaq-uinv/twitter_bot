@@ -82,6 +82,34 @@ your message back, so a post whose own text contained "error" or "apikey" made a
 while blocking every post queued behind it (Amendment A-5). No mock caught that one —
 mocks encode what you assume the service returns; only the live service could refute it.
 
+## Deployment
+
+Production runs on a **GitHub Actions schedule**, not a machine you have to keep on.
+`.github/workflows/poll.yml` runs the same Docker image every 15 minutes via the
+existing `run --once` flag — no application code changed for this. State moves from
+the Docker volume to git commits (`state/seen.json` is tracked, updated only when it
+changes). See plan Amendment A-6 for why this beat the alternatives (Oracle/GCP free
+VMs need a new account and ongoing maintenance; Cloudflare Containers has no free
+tier at all; Fly.io's free tier is gone).
+
+Set two repository secrets before enabling it:
+
+```bash
+gh secret set CALLMEBOT_PHONE
+gh secret set CALLMEBOT_APIKEY
+```
+
+Then verify with a manual dry run before trusting the schedule:
+
+```bash
+gh workflow run poll.yml -f dry_run=true
+gh run watch
+```
+
+`docker compose up -d` still works unchanged for local development — it just isn't
+what's deployed. Don't run both against the same account at once: each keeps its own
+copy of `seen.json`, so a post published after they diverge gets delivered twice.
+
 ## Caveats
 
 - `HOST_UID`/`HOST_GID` in `.env` must match your own (`id -u`, `id -g`) or the

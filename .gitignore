@@ -1,5 +1,6 @@
 .env
-state/
+state/*
+!state/seen.json
 __pycache__/
 *.py[cod]
 .pytest_cache/
