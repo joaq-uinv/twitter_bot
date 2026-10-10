@@ -287,3 +287,106 @@ would double-delivery any post published after they diverge, since each maintain
 its own copy of `seen.json` independently once local's on-disk file and git's
 committed copy stop being the same bytes. The local container is stopped once the
 Actions workflow is verified working end to end.
+
+## Amendment A-7 — a paused account went unexplained for three weeks (2026-10-10)
+
+From the A-6 deployment on 2026-09-17 until 2026-10-10, every scheduled run ended
+`sent=0`. The workflow stayed green throughout, and nothing reached WhatsApp.
+
+**Root cause, found by probing the live service:** CallMeBot had paused the account.
+It answered **HTTP 208**, echoing our text and then adding:
+
+    Your Account is Paused due to technical issues. Please send the word "resume"
+    to your bot (+34 …) to re-enable the service for your number.
+
+The sink behaved correctly under FR-12: no `queued` marker, so not delivered and not
+marked seen. But the ERROR line quoted `body[:120]`, and the first 120 characters are
+always our own echoed message, so the cause was cut off on every run. That violates
+§7 ("degraded states are logged … with the reason"). It also misled the diagnosis:
+the outage started at the same time as the move to Actions, so the first suspect was
+GitHub's datacenter IPs. A send from the operator's machine failed the same way,
+which ruled that out. The operator sent "resume", and delivery came back.
+
+**Fix:** the failure reason is now the service's own words. The echo is stripped,
+HTML is removed, and the result is capped at 300 characters
+(`sinks/callmebot._reason`). The captured paused body is a fixture
+(`tests/fixtures/callmebot_paused.html`).
+
+**A-7.1 — the fix opened a leak path, so the tests came first.** Quoting more of the
+body sends more third-party bytes into exception text and logs. The old code already
+had this path: no test fed a 2xx body containing the key. The new
+`tests/adversarial/test_secret_leaks.py` failed first: a key echoed in a 200 body
+reached both `str(DeliveryFailed)` and the ERROR log, in raw, URL-encoded and
+HTML-escaped form. The reason is now scrubbed of all three forms, before truncating
+(a cut could expose part of the key) and again after unescaping. These tests do not
+call `logging_setup.configure()`, so the sink cannot rely on root redaction.
+
+**Still open:** the A-6 failure alert curls the same CallMeBot account and discards
+the body, so it could not fire while the account was paused. The only signal that
+reached the operator was GitHub's own failure email, sent for a Docker Hub 429 on an
+unrelated run.
+
+## Amendment A-8 — a failed delivery now fails the run (2026-10-10)
+
+Follows A-7. Logging the reason solved half of §7. Nobody reads the logs of a run
+that shows as green.
+
+**Defect:** `Pipeline.run_once` recorded `result.failed`, but `run --once` only
+exited non-zero on a source outage. Every paused-account run exited 0. GitHub only
+emails on failed runs, so its email, the one alarm independent of the delivery
+service, never fired. The one failure email that did arrive came from an unrelated
+Docker Hub 429.
+
+**Changes:**
+- `run --once` exits 1 when `result.failed`, and the summary line prints `failed=N`.
+- `poll.yml` "Persist state" runs on `!cancelled()`, not only on success. This defect
+  was latent before the exit-code change, because outage runs already exited 1 and
+  skipped it. With delivery failures also exiting 1, a batch that sent 3 posts and
+  then failed would have lost those 3 seen IDs and re-sent them on the next run.
+- `poll.yml` "Alert on workflow failure" reads CallMeBot's reply instead of
+  discarding it. If the reply is not `queued`, it adds an `::error::` annotation to
+  the run. It does not print the reply, which echoes the phone number.
+
+**What this changes about the design:** the A-6 belief that the alert step "would
+notice" a failure was wrong whenever the failing component *is* the alert channel.
+Alerts now have two independent routes: WhatsApp (best effort) and GitHub's
+failed-run email (independent of CallMeBot).
+
+## Amendment A-9 — run summaries, a dead man's switch, traceability (2026-10-10)
+
+A-7 and A-8 made failures visible *if someone looks*. A-9 removes the looking.
+
+**Run summary.** A new `summarize` CLI subcommand (`report.py`) renders the run's
+log as a GitHub job summary. It shows a headline verdict with counts, the mirror
+that answered, a link per delivered post, the problem lines, and the full log in a
+collapsed section. It is built from the log, not from in-process state, so it also
+covers runs that crashed or failed to build. It loads no config, so it can also
+explain runs that died on a bad `.env`. The log quotes third-party bytes, so all of
+it is HTML-escaped inside `<pre>` blocks (§4). The tests try script injection,
+breaking out of the `<pre>` block, and markdown injection.
+
+**Dead man's switch (Healthchecks.io).** The workflow pings `/start`, then success
+or `/fail`, with the run URL and log tail as the body. If no ping arrives, the
+service alerts the operator. That covers failures the app can never report:
+GitHub delaying or disabling the schedule, or a workflow too broken to run. The
+alert goes through neither GitHub nor CallMeBot. The ping URL is a secret
+(`HEALTHCHECKS_PING_URL`); if it is unset, the run gets a warning and no pings.
+
+**Traceability.** `delivered tweet_id=N` is logged per successful send. State
+commits carry the run URL, so `git log -p state/seen.json` links every tweet ID to
+the run that delivered it and that run's summary. A per-line run ID was considered
+and rejected (§8): every log line already sits in exactly one run's log.
+
+**Leaving the masked log viewer.** GitHub masks secrets only in its own log viewer.
+`run.log` now goes to the summary page (public repo) and to Healthchecks. Two
+consequences:
+- The failure reason now drops the phone number. CallMeBot's reply opens with
+  `Message to: <phone>`. Adversarial test added.
+- A workflow step removes the secret values from `run.log` before either reader
+  sees it. This backstop covers output the app does not control, e.g. a pydantic
+  config error echoing its input.
+
+**Docker Hub 429.** The base image now comes from `public.ecr.aws/docker/library/`,
+the same official image without Docker Hub's anonymous pull limit from shared CI
+IPs. `# syntax=docker/dockerfile:1` was removed, because it made BuildKit pull its
+frontend from Docker Hub too.

@@ -104,9 +104,11 @@ def cmd_run(config: Config, once: bool, dry_run: bool) -> int:
         except StateUnwritable as exc:
             print(f"Cannot start:\n\n{exc}", file=sys.stderr)
             return 2
-        print(f"sent={result.sent} withheld={result.withheld} "
+        print(f"sent={result.sent} withheld={result.withheld} failed={result.failed} "
               f"bootstrapped={result.bootstrapped} outage={result.outage}")
-        return 1 if result.outage else 0
+        # Non-zero on a delivery failure too: a scheduler's failure notice is the one
+        # alarm that does not travel through the delivery channel (plan A-8, §7).
+        return 1 if result.outage or result.failed else 0
 
     from .scheduler import run_forever
     run_forever(pipeline, config.poll_interval_seconds)
@@ -138,8 +140,17 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("check-source", help="show which mirror answers and what it parses")
     sub.add_parser("test-whatsapp", help="send one real test message")
     sub.add_parser("healthcheck", help="exit non-zero if checks have stalled")
+    summ = sub.add_parser("summarize", help="render a run's log (stdin) as a job summary")
+    summ.add_argument("--exit-code", type=int, required=True)
+    summ.add_argument("--handle", required=True)
+    summ.add_argument("--run-url")
 
     args = parser.parse_args(argv)
+    if args.command == "summarize":
+        # Before _load(): it must also explain runs that died on bad config.
+        from .report import render_summary
+        print(render_summary(sys.stdin.read(), args.exit_code, args.run_url, args.handle))
+        return 0
     config = _load()
     _setup(config)
 

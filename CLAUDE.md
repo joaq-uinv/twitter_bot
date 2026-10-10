@@ -47,8 +47,8 @@ Everything runs in Docker; there is no host Python environment.
 
 ```bash
 docker compose build
-docker compose run --rm relay pytest            # full suite
-docker compose run --rm relay pytest tests/adversarial -v
+docker compose run --rm --entrypoint python relay -m pytest            # full suite
+docker compose run --rm --entrypoint python relay -m pytest tests/adversarial -v
 docker compose run --rm relay check-source      # which mirror answered, what parsed
 docker compose run --rm relay run --once --dry-run
 docker compose run --rm relay test-whatsapp     # sends one real message

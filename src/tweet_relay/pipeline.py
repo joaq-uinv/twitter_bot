@@ -122,6 +122,7 @@ class Pipeline:
                 state.mark_seen(t.id)
                 save_state(cfg.STATE_PATH, state)   # FR-12: persist per success
                 result.sent += 1
+                log.info("delivered tweet_id=%s", t.id)   # traced by the run summary
 
             if withheld and not result.failed:
                 try:

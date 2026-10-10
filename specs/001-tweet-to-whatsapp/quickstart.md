@@ -24,7 +24,7 @@ needs touching.
 
 ```bash
 docker compose build
-docker compose run --rm relay pytest                    # full suite, no network
+docker compose run --rm --entrypoint python relay -m pytest                    # full suite, no network
 docker compose run --rm relay check-source              # which mirror answered
 docker compose run --rm relay run --once --dry-run      # renders, sends nothing
 ```

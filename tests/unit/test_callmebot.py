@@ -1,5 +1,5 @@
 """Delivery adapter. FR-12 (never claim a false success) and FR-13 (never leak the key)."""
-import httpx, logging, pytest, respx
+import httpx, logging, pathlib, pytest, respx
 from urllib.parse import parse_qs, urlparse
 from tweet_relay.models import DeliveryFailed
 from tweet_relay.sinks.callmebot import CallMeBotSink
@@ -177,3 +177,33 @@ def test_html_escaped_echo_is_also_stripped(config):
             "<p><b>Message queued.</b>")
     respx.get(API).mock(httpx.Response(200, text=body))
     sink(config).send(text)          # must not raise
+
+
+# --- regression: the service paused the account (live, 2026-10-09) ---
+#
+# Every send failed for three weeks and the log never said why: it printed the first
+# 120 characters of the body, which are always our own echoed text. The service's
+# actual words ("Your Account is Paused ... send resume") were cut off (§7).
+
+PAUSED = (pathlib.Path(__file__).parent.parent / "fixtures" / "callmebot_paused.html").read_text()
+LONG_TEXT = "a post long enough that its echo alone fills any truncated log line. " * 3
+
+
+@respx.mock
+def test_paused_account_failure_names_the_cause(config):
+    respx.get(API).mock(httpx.Response(208, text=PAUSED.replace("{text}", LONG_TEXT)))
+    with pytest.raises(DeliveryFailed) as exc:
+        sink(config).send(LONG_TEXT)
+    assert "Paused" in str(exc.value)
+    assert "resume" in str(exc.value)
+
+
+@respx.mock
+def test_failure_reason_is_the_service_words_not_our_echo(config):
+    body = f"<p>Message to: +34600111222<p>Text to send: {LONG_TEXT}<p>something entirely new</p>"
+    respx.get(API).mock(httpx.Response(200, text=body))
+    with pytest.raises(DeliveryFailed) as exc:
+        sink(config).send(LONG_TEXT)
+    assert "something entirely new" in str(exc.value)
+    assert LONG_TEXT.strip() not in str(exc.value)
+    assert "<p>" not in str(exc.value)

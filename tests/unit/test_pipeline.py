@@ -237,3 +237,17 @@ def test_every_run_path_logs_completion(config, caplog):
     with caplog.at_level(logging.INFO):
         Pipeline(config, FakeSource([tweet(1, minutes=1)]), RecordingSink()).run_once()
     assert "check complete" in caplog.text            # normal path
+
+
+# ---------- traceability (plan A-9) ----------
+
+def test_each_delivery_is_logged_with_its_tweet_id(config, caplog):
+    """The run summary links every delivered post from this line."""
+    import logging
+    src = FakeSource([tweet(1, minutes=1)])
+    sink = RecordingSink()
+    bootstrapped(config, src, sink)
+    src.tweets.append(tweet(2, minutes=2))
+    with caplog.at_level(logging.INFO):
+        build(config, src, sink).run_once()
+    assert "delivered tweet_id=2" in caplog.text
