@@ -54,9 +54,13 @@ What this feature must give the operator, in priority order:
 - **AC-1.3** Given the previous round was at risk, when a round finds 2 or more
   in-use mirrors healthy, then the operator is told **once** that the risk has
   cleared.
-- **AC-1.6** Given the relay stays at risk across several rounds, then the urgent
-  alert is sent **once per at-risk episode** on each channel, not once per round
-  (D-3). While the episode lasts, the status page keeps showing the risk.
+- **AC-1.6** Given the relay stays at risk across several rounds, then **every**
+  at-risk round reports itself as failed, so the scheduler's own failure notice
+  reaches the operator each round. The other urgent channel alerts once when the
+  episode starts and once when it clears (D-3).
+- **AC-1.7** Given a round reports failure, then its notice states which of the two
+  causes applies: **at risk** (the check worked and found too few healthy mirrors)
+  or **check broken** (the check itself could not complete).
 - **AC-1.4** The urgent alert reaches the operator through a channel that does not
   depend on the relay's message delivery working.
 - **AC-1.5** Given rounds stop happening altogether, then the operator is alerted.
@@ -158,7 +162,8 @@ that** I know what to switch to when an in-use mirror dies.
   neither of which depends on the relay's message delivery working.
 - **FR-9** The system MUST alert the operator when no round has completed within
   **24 hours**, which is about four missed rounds. A late warning is preferred to a
-  false alarm (D-1).
+  false alarm (D-1). A round that reports failure **only** because the relay is at
+  risk still counts as completed: it did its job.
 - **FR-10** Soft warnings (US-2) MUST be durable, at most one open per mirror, and
   visible to the operator outside the status page.
 
@@ -244,13 +249,13 @@ context loss.
 |---|----------|----------|-----------|
 | D-1 | How long without a completed round before the "health check stopped" alert (FR-9) | **24 hours** | The operator prefers late warnings to false alarms. The scheduler already starts runs 4–7 hours apart, not every 6, so a 12-hour limit would fire on ordinary lateness. 24 hours is about four missed rounds: certainly broken, and still long before discovery staleness matters. |
 | D-2 | What happens to a mirror removed from the configuration (E-17) | It **comes back as a candidate**, keeping its history; its open warning is resolved | The operator vetted it once, so it is a better replacement than an unknown discovered host, which is why it ranks ahead of them within the cap. Keeping its history means that adding it back to the configuration starts from real evidence rather than from zero. |
-| D-3 | Urgent alert per round, or per at-risk episode (Q-3) | **Once per episode**, plus one all-clear | Matches how 001 FR-10 handles outages. An alert repeated every round trains the operator to ignore it. The page shows the ongoing risk throughout, so "once" never means "forgotten". This applies to **every** urgent channel (see the note below). |
+| D-3 | How often the urgent alert repeats (Q-3) | **Every at-risk round fails**, so the scheduler's failure notice repeats each round. The second channel alerts once per episode, plus one all-clear. | *Revised 2026-10-10 at the operator's request; first decided as once per episode on every channel.* Being at risk means one more mirror death stops relaying, so the operator chose persistence over calm: a repeating notice is hard to miss, and failing rounds keep the run history visibly red for the whole episode. Keeping the second channel state-based means the start and end of the episode stay crisp, and the alert does not depend on a single channel. |
 | D-4 | Does unknown freshness count as healthy (Q-4) | **Yes**, folded into the definition of "healthy" | Unknown happens only when no in-use mirror is usable. Then a usable candidate is exactly what the operator needs to find, and counting it unhealthy would hide replacements during the very outage they are needed for. It cannot weaken the urgent alert: in-use mirrors are unusable whenever freshness is unknown, so they are never healthy. |
 
-**Note for `plan.md` (from D-3):** a channel that fires on every failed scheduled run
-cannot carry the urgent alert. While at risk, each round would count as a fresh
-alert. The plan must use only channels that alert on a change of state, not on every
-run. A failed run stays reserved for "the health check itself broke".
+**Note for `plan.md` (from D-3, revised):** the round must report failure on every
+at-risk round **and** when the check itself breaks (AC-1.7 distinguishes the two).
+The second urgent channel must alert on a change of state, not on every run. FR-9's
+"stopped" detection must not treat an at-risk failure as a missing round.
 
 ## Success
 

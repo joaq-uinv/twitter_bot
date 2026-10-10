@@ -283,7 +283,7 @@
       "dot": "rose",
       "title": "Two-tier alerts",
       "items": [
-        "Urgent: <2 in-use healthy → once per episode + one all-clear",
+        "Urgent: <2 in-use healthy → every round fails + Healthchecks once per episode",
         "Soft: one issue per mirror down 24h, auto-closed",
         "Health check silent 24h → alert"
       ]
