@@ -30,6 +30,26 @@ def render(tweet: Tweet, monitored_handle: str) -> str:
     return "\n\n".join(parts)
 
 
+_MINIMAL_LEADS = {
+    TweetKind.ORIGINAL: "New post from @{monitored}",
+    TweetKind.RETWEET: "@{monitored} reposted @{author}",
+    TweetKind.QUOTE: "@{monitored} quoted a post",
+    TweetKind.REPLY: "@{monitored} replied",
+}
+
+
+def render_minimal(tweet: Tweet, monitored_handle: str) -> str:
+    """E-21/D-4: fixed wording plus the link, no post text.
+
+    Used only after the channel refused the full message. Nothing in it comes from the
+    post except validated handles and the link, so if this is refused too, the channel
+    is the problem rather than the content. The wording follows the kind, so a repost
+    is never presented as the account's own post.
+    """
+    lead = _MINIMAL_LEADS[tweet.kind].format(monitored=monitored_handle, author=tweet.author)
+    return f"{lead} (its text could not be delivered): {tweet.url}"
+
+
 def render_bootstrap(handle: str, count: int) -> str:
     return (f"✅ Relay is live for @{handle}.\n\n"
             f"{count} existing posts marked as already seen — you will only get new ones.")

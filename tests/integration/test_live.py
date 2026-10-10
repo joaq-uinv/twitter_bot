@@ -23,8 +23,8 @@ def test_at_least_one_real_mirror_serves_the_account():
 @pytest.mark.parametrize("instance", [
     "https://nitter.kareem.one",
     "https://nitter.meowing.monster",
-    "https://nitter.netbub.com",
-    "https://nitter.jaydenha.uk",
+    "https://nitter.pp.ua",
+    "https://shitter.thepixora.com",
 ])
 def test_each_pinned_mirror_individually(instance):
     """Reports which pinned mirrors have died, rather than hiding it behind failover."""

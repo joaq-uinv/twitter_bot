@@ -226,3 +226,84 @@ def test_console_sink_lines_cannot_pass_for_log_lines(capsys):
                        "sent=9 withheld=0 failed=0 bootstrapped=False outage=False")
     for line in capsys.readouterr().out.splitlines():
         assert line.startswith("| "), line
+
+
+# --- E-21 / D-4: which refusals are about the message, not the channel ---
+
+@respx.mock
+@pytest.mark.parametrize("status", [400, 403, 413, 414])
+def test_message_refusal_is_reported_as_rejected(config, status):
+    from tweet_relay.models import MessageRejected
+    respx.get(API).mock(httpx.Response(status, text="Forbidden"))
+    with pytest.raises(MessageRejected):
+        sink(config).send("hi")
+
+
+@respx.mock
+@pytest.mark.parametrize("response", [
+    httpx.Response(429, text="Too Many Requests"),        # rate limit: a retry adds traffic
+    httpx.Response(503, text="unavailable"),              # channel down
+    httpx.Response(208, text="Your Account is Paused"),   # account-level (A-7)
+])
+def test_channel_problems_are_not_reported_as_message_rejection(config, response):
+    from tweet_relay.models import MessageRejected
+    respx.get(API).mock(response)
+    with pytest.raises(DeliveryFailed) as exc:
+        sink(config, max_attempts=1).send("hi")
+    assert not isinstance(exc.value, MessageRejected)
+
+
+@respx.mock
+@pytest.mark.parametrize("response", [
+    httpx.Response(403, text="<p>APIKey test-key-do-not-log blocked: too many requests</p>"),
+    httpx.Response(403, text="Your APIKey is invalid"),
+    httpx.Response(401, text="Unauthorized"),
+    httpx.Response(404, text="Not Found"),
+])
+def test_account_and_rate_refusals_are_not_message_rejection(config, response):
+    """Review #1: D-4 gives no retry to account-level or rate-limit refusals."""
+    from tweet_relay.models import MessageRejected
+    respx.get(API).mock(response)
+    with pytest.raises(DeliveryFailed) as exc:
+        sink(config, max_attempts=1).send("hi")
+    assert not isinstance(exc.value, MessageRejected)
+
+
+@respx.mock
+def test_the_live_403_is_message_rejection(config):
+    """The body CallMeBot actually returned on 2026-10-10 for the refused post."""
+    from tweet_relay.models import MessageRejected
+    live = ("403 Forbidden Forbidden You don't have permission to access this resource. "
+            "Apache/2.4.29 (Ubuntu) Server at cmb-app.callmebot.com Port 443")
+    respx.get(API).mock(httpx.Response(403, text=live))
+    with pytest.raises(MessageRejected):
+        sink(config).send("hi")
+
+
+@respx.mock
+def test_real_sink_and_pipeline_deliver_a_refused_post_in_minimal_form(config, caplog):
+    """Review #5: end to end through the real sink, including the WARNING lines."""
+    import logging
+    from tests.doubles import FakeSource, RecordingSink, tweet
+    from tweet_relay.pipeline import Pipeline
+    src = FakeSource([tweet(1, minutes=1)])
+    Pipeline(config, src, RecordingSink()).run_once()                 # bootstrap
+    src.tweets.append(tweet(2, minutes=2))
+    route = respx.get(API).mock(side_effect=[
+        httpx.Response(403, text="<p>Forbidden for test-key-do-not-log +34600111222</p>"),
+        httpx.Response(200, text="<p>Message queued.</p>"),
+    ])
+    with caplog.at_level(logging.DEBUG):
+        result = Pipeline(config, src, sink(config)).run_once()
+    assert route.call_count == 2 and result.sent == 1 and result.failed == 0
+    assert "delivered in minimal form tweet_id=2" in caplog.text
+    assert "test-key-do-not-log" not in caplog.text and "600111222" not in caplog.text
+
+
+@respx.mock
+def test_channel_wording_needs_whole_words(config):
+    """"generate"/"accurate" must not read as rate limiting and re-block the queue."""
+    from tweet_relay.models import MessageRejected
+    respx.get(API).mock(httpx.Response(403, text="Forbidden: could not generate an accurate preview"))
+    with pytest.raises(MessageRejected):
+        sink(config).send("hi")

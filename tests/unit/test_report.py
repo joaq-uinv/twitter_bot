@@ -88,3 +88,15 @@ def test_markdown_in_the_log_cannot_break_out_of_its_block():
 def test_very_long_logs_are_truncated():
     out = render_summary("x" * 2_000_000, exit_code=2, run_url=RUN, handle=H)
     assert len(out) < 200_000
+
+
+def test_minimal_form_delivery_is_flagged_in_the_headline():
+    """Review #6: a post whose text was not delivered is a degraded success."""
+    log = CLEAN.replace(
+        "sent=2 withheld=0 failed=0",
+        "sent=2 withheld=0 failed=0").replace(
+        "2026-10-10 13:41:34,100 INFO    tweet_relay.pipeline: delivered tweet_id=2107969700978409979",
+        "2026-10-10 13:41:34,099 WARNING tweet_relay.pipeline: delivered in minimal form tweet_id=2107969700978409979\n"
+        "2026-10-10 13:41:34,100 INFO    tweet_relay.pipeline: delivered tweet_id=2107969700978409979")
+    head = render_summary(log, exit_code=0, run_url=RUN, handle=H).splitlines()[0]
+    assert head.startswith("## ⚠️") and "1 in minimal form" in head

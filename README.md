@@ -63,7 +63,7 @@ hypothesis hunt for counterexamples. Full evidence in
 ## Tests
 
 ```bash
-docker compose run --rm --entrypoint python relay -m pytest                      # 328 tests, no network
+docker compose run --rm --entrypoint python relay -m pytest                      # 351 tests, no network
 docker compose run --rm --entrypoint python relay -m pytest tests/adversarial -v # hostile input
 docker compose run --rm --entrypoint python relay -m pytest -m live              # real mirrors (opt-in)
 ```
