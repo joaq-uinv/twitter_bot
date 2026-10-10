@@ -12,11 +12,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from .models import HANDLE_RE
 
 # Verified working 2026-09-15 (research.md R-1). Volunteer-run; expect churn.
+# Re-verified 2026-10-10 (specs/002-mirror-health/research.md R-2): netbub now answers
+# with a bot challenge and jaydenha with an HTML access queue, so both were replaced.
+# Ordered fastest first; meowing.monster answered in 12 s against a 15 s timeout.
 DEFAULT_INSTANCES = [
     "https://nitter.kareem.one",
+    "https://nitter.pp.ua",
+    "https://shitter.thepixora.com",
     "https://nitter.meowing.monster",
-    "https://nitter.netbub.com",
-    "https://nitter.jaydenha.uk",
 ]
 
 _PROFILE_HOSTS = {"x.com", "www.x.com", "twitter.com", "www.twitter.com"}

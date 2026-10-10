@@ -2,7 +2,7 @@
 
 ```python
 class MessageSink(Protocol):
-    def send(self, message: str) -> None: ...   # raises DeliveryFailed
+    def send(self, message: str) -> None: ...   # raises DeliveryFailed or MessageRejected
 ```
 
 ## Guarantees an implementation MUST provide
@@ -19,11 +19,18 @@ class MessageSink(Protocol):
 5. Applies its own inter-message pacing to respect channel rate limits.
 6. Retries transient failures with backoff; raises `DeliveryFailed` once exhausted.
    Retries must not duplicate an already-delivered message.
+7. **Raises `MessageRejected`** (a subclass of `DeliveryFailed`) **only** when the
+   channel refused *this particular message* (E-21). It **never** raises it for rate
+   limiting, server errors, timeouts, or account and key problems, because the
+   pipeline answers `MessageRejected` with one minimal-form retry (D-4), and a retry
+   on a channel problem only adds traffic. A sink that cannot tell the difference
+   raises plain `DeliveryFailed`, which is safe but brings back E-21's blocking.
+   `MessageRejected` is never retried inside the sink.
 
 ## Implementations
 
 | Name | Notes |
 |---|---|
-| `CallMeBotSink` | Production. 3s pacing, backoff on 5xx/timeout, body-content success check |
+| `CallMeBotSink` | Production. 3s pacing, backoff on 5xx/timeout, body-content success check. `MessageRejected` only for 400/403/413/414/422 whose scrubbed reason has no account or rate-limit wording (A-11) |
 | `ConsoleSink` | `--dry-run`. Prints the exact rendered message; never fails |
-| `RecordingSink` | Test double. Can be told to fail on the *n*-th send, for E-5 partial-failure tests |
+| `RecordingSink` | Test double. Can be told to fail on the *n*-th send, for E-5 partial-failure tests. Raises plain `DeliveryFailed`; `RefusingSink` in `test_pipeline.py` covers `MessageRejected` |

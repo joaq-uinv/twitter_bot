@@ -273,3 +273,62 @@ def test_failed_withheld_notice_marks_the_run_failed(config):
     sink.fail_on = {2}                     # 1st send = post 2 succeeds, 2nd = notice fails
     result = build(config, src, sink).run_once()
     assert result.sent == 1 and result.failed == 1
+
+
+# ---------- E-21 / D-4: a message the channel refuses (plan A-11) ----------
+
+class RefusingSink(RecordingSink):
+    """Refuses any message containing `poison`, like the 403 seen live on 2026-10-10."""
+    def __init__(self, poison: str, refuse_minimal: bool = False, plain_failure: bool = False):
+        super().__init__()
+        self.poison, self.refuse_minimal, self.plain_failure = poison, refuse_minimal, plain_failure
+
+    def send(self, message):
+        from tweet_relay.models import DeliveryFailed, MessageRejected
+        self.attempts += 1
+        minimal = "(its text could not be delivered)" in message
+        if (self.poison in message) or (minimal and self.refuse_minimal):
+            if self.plain_failure:
+                raise DeliveryFailed("channel down")
+            raise MessageRejected("rejected with HTTP 403")
+        self.sent.append(message)
+
+
+def _with_pending(config, sink, *new):
+    src = FakeSource([tweet(1, minutes=1)])
+    bootstrapped(config, src, sink)
+    src.tweets += list(new)
+    return src
+
+
+def test_refused_post_is_delivered_in_minimal_form_and_the_queue_moves_on(config, caplog):
+    import logging
+    sink = RefusingSink(poison="post 2")
+    src = _with_pending(config, sink, tweet(2, minutes=2), tweet(3, minutes=3))
+    with caplog.at_level(logging.INFO):
+        result = build(config, src, sink).run_once()
+    assert result.sent == 2 and result.failed == 0
+    assert sink.sent[0].startswith("New post from @santtiagom_") and "status/2" in sink.sent[0]
+    assert "post 3" in sink.sent[1]
+    state = load_state(config.STATE_PATH, H)
+    assert not state.is_new(2) and not state.is_new(3)
+    assert "delivered in minimal form tweet_id=2" in caplog.text
+    assert "delivered tweet_id=2" in caplog.text
+
+
+def test_refused_minimal_form_is_an_ordinary_delivery_failure(config):
+    sink = RefusingSink(poison="post 2", refuse_minimal=True)
+    src = _with_pending(config, sink, tweet(2, minutes=2), tweet(3, minutes=3))
+    result = build(config, src, sink).run_once()
+    assert result.failed == 1 and result.sent == 0
+    state = load_state(config.STATE_PATH, H)
+    assert state.is_new(2) and state.is_new(3)          # E-5: retried next check
+
+
+def test_channel_failure_gets_no_minimal_retry(config):
+    sink = RefusingSink(poison="post 2", plain_failure=True)
+    src = _with_pending(config, sink, tweet(2, minutes=2))
+    sink.attempts = 0
+    result = build(config, src, sink).run_once()
+    assert result.failed == 1
+    assert sink.attempts == 1                            # D-4: no extra traffic

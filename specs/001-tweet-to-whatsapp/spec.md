@@ -27,7 +27,8 @@ my WhatsApp **so that** I learn about it without checking X.
 
 - **AC-1.1** Given the monitored account publishes a post, when the next check runs,
   then the operator receives one message containing the post's author, its text, and
-  a link that opens the post on X.
+  a link that opens the post on X. The one exception is E-21, where the channel
+  refuses the text and the operator receives the author and link only.
 - **AC-1.2** Given a post has already been delivered, when any later check runs, then
   it is never delivered again — including after the system restarts.
 - **AC-1.3** Given several undelivered posts exist, when a check runs, then they are
@@ -142,6 +143,7 @@ that** silence always means "nothing was posted" and never "it broke".
 | E-18 | A source is reachable but hangs indefinitely | Abandoned after a bounded wait; next source tried |
 | E-19 | Delivery channel reports success but the body indicates an error | Treated as failure; post not marked delivered (FR-12) |
 | E-20 | Operator configures a source address pointing at internal infrastructure | Refused (FR-8) |
+| E-21 | The delivery channel refuses one specific message while still accepting others | Retry that post **once** in a minimal form: fixed wording, the account and the post's link, no post text. If accepted: the post counts as delivered, and the operator is told it went out in minimal form. If the minimal form is refused too, it is an ordinary delivery failure (E-5, FR-12). A refusal that signals overload or rate limiting gets no retry (D-4) |
 
 ## Out of Scope
 
@@ -163,6 +165,7 @@ context loss.
 | D-1 | How to treat quote-posts | Own category, delivered by default, independently disableable | The commentary is the account's own writing, so it is genuine activity — but grouping it with originals would make it impossible to silence without also silencing authored posts |
 | D-2 | Frequency of the liveness confirmation | Once per monitored account, on first run only | Restarts are expected and frequent under an always-restart supervisor; a per-start message would spam hardest exactly when the system is unhealthy and restart-looping |
 | D-3 | Fate of posts withheld by the per-check limit | Remain undelivered; drain on subsequent checks | Makes the limit a rate-limiter rather than a dropper, preserving FR-2's exactly-once guarantee. A 30-post burst clears over 3 checks instead of being lost |
+| D-4 | What to do when the channel refuses one specific message (E-21) | Retry once in a minimal fixed-text form; if that is also refused, treat as an ordinary delivery failure | *Decided 2026-10-10, after a live incident:* the channel refused one post's text while accepting other messages. Because delivery stops at the first failure (E-5), that single post blocked every later post indefinitely. The minimal form still gets the operator the link, so nothing is silently dropped. Its fixed text cannot itself be what is refused, so a second refusal really means the channel is down, and the existing failure handling applies. Overload and rate-limit refusals are excluded because a retry only adds traffic |
 
 ## Success
 

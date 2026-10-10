@@ -25,6 +25,8 @@ _MIRROR = re.compile(_LOG + r"INFO\s+tweet_relay\.sources\.nitter_rss: "
                      r"fetched (\d+) posts from (https://[\w.-]+)$", re.M)
 _DELIVERED = re.compile(_LOG + r"INFO\s+tweet_relay\.pipeline: "
                         r"delivered tweet_id=(\d+)$", re.M)
+_MINIMAL = re.compile(_LOG + r"WARNING\s+tweet_relay\.pipeline: "
+                      r"delivered in minimal form tweet_id=(\d+)$", re.M)
 _PROBLEM = re.compile(_LOG + r"(?:WARNING|ERROR|CRITICAL)\s.*$"
                       r"|^Traceback \(most recent call last\):$", re.M)
 
@@ -44,6 +46,7 @@ def render_summary(log: str, exit_code: int, run_url: str | None, handle: str) -
     mirror = _MIRROR.search(log)
     delivered = _DELIVERED.findall(log)
     problems = [m.group(0) for m in _PROBLEM.finditer(log)]
+    minimal = len(_MINIMAL.findall(log))
 
     if result is None:
         headline = f"## ❌ tweet-relay: check did not complete (exit {exit_code})"
@@ -52,6 +55,8 @@ def render_summary(log: str, exit_code: int, run_url: str | None, handle: str) -
         dry_run = dry == "True"
         ok = exit_code == 0 and failed == "0" and outage == "False"
         icon, verdict = ("✅", "ok") if ok else ("❌", "failed")
+        if ok and minimal:
+            icon = "⚠️"            # delivered, but some post text did not get through (E-21)
         if outage == "True":
             verdict = "no mirror reachable"
         if dry_run:
@@ -61,6 +66,8 @@ def render_summary(log: str, exit_code: int, run_url: str | None, handle: str) -
         else:
             headline = (f"## {icon} tweet-relay: {verdict}, sent {sent}, "
                         f"withheld {withheld}, failed {failed}")
+        if minimal:
+            headline += f", {minimal} in minimal form"
         if bootstrapped == "True":
             headline += ", first run (bootstrapped)"
 
