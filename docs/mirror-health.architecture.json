@@ -1,0 +1,300 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Mirror Health & Status Page (spec 002)",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "views": [
+      {
+        "id": "probe-path",
+        "label": "Probe and publish",
+        "focus": [
+          "sched",
+          "probe",
+          "mirrors",
+          "history",
+          "page",
+          "operator"
+        ],
+        "note": "Every ~6h: probe each mirror read-only, append to history, render the public page."
+      },
+      {
+        "id": "discovery",
+        "label": "Hostile discovery",
+        "focus": [
+          "list",
+          "discover",
+          "probe"
+        ],
+        "note": "Community list entries are validated, capped at 25, and only ever suggested."
+      },
+      {
+        "id": "alerts",
+        "label": "Two-tier alerts",
+        "focus": [
+          "probe",
+          "history",
+          "hc",
+          "issues",
+          "operator"
+        ],
+        "note": "Urgent when <2 in-use healthy; soft issue when one mirror is unhealthy for 24h."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "list",
+      "type": "external",
+      "label": "Community list",
+      "sublabel": "public mirror index",
+      "pos": [
+        40,
+        130
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "discover",
+      "type": "security",
+      "label": "Discovery filter",
+      "sublabel": "validate · dedupe",
+      "pos": [
+        260,
+        130
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "cap 25"
+    },
+    {
+      "id": "sched",
+      "type": "backend",
+      "label": "mirrors.yml",
+      "sublabel": "every ~6h",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "probe",
+      "type": "backend",
+      "label": "Mirror probe",
+      "sublabel": "read-only, never sends",
+      "pos": [
+        480,
+        300
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "mirrors",
+      "type": "external",
+      "label": "Nitter mirrors",
+      "sublabel": "in-use + candidates",
+      "pos": [
+        480,
+        480
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "history",
+      "type": "database",
+      "label": "mirror-status",
+      "sublabel": "history · 90 days",
+      "pos": [
+        710,
+        300
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "page",
+      "type": "frontend",
+      "label": "Status page",
+      "sublabel": "GitHub Pages",
+      "pos": [
+        930,
+        300
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "issues",
+      "type": "cloud",
+      "label": "GitHub Issues",
+      "sublabel": "soft: down ≥24h",
+      "pos": [
+        930,
+        130
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "hc",
+      "type": "cloud",
+      "label": "Healthchecks.io",
+      "sublabel": "urgent: <2 healthy",
+      "pos": [
+        930,
+        480
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "operator",
+      "type": "external",
+      "label": "Operator",
+      "sublabel": "email + glance",
+      "pos": [
+        1150,
+        300
+      ],
+      "size": [
+        130,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "fetch-list",
+      "from": "list",
+      "to": "discover",
+      "label": "fetch list"
+    },
+    {
+      "id": "candidates",
+      "from": "discover",
+      "to": "probe",
+      "label": "candidates"
+    },
+    {
+      "id": "trigger",
+      "from": "sched",
+      "to": "probe",
+      "label": "start round",
+      "variant": "emphasis"
+    },
+    {
+      "id": "probe-mirrors",
+      "from": "probe",
+      "to": "mirrors",
+      "label": "probe",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "append",
+      "from": "probe",
+      "to": "history",
+      "label": "append",
+      "variant": "emphasis"
+    },
+    {
+      "id": "render",
+      "from": "history",
+      "to": "page",
+      "label": "render",
+      "variant": "emphasis"
+    },
+    {
+      "id": "glance",
+      "from": "page",
+      "to": "operator",
+      "label": "glance"
+    },
+    {
+      "id": "soft-alert",
+      "from": "history",
+      "to": "issues",
+      "label": "24h window",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "left"
+    },
+    {
+      "id": "urgent-alert",
+      "from": "probe",
+      "to": "hc",
+      "label": "/fail",
+      "variant": "security"
+    },
+    {
+      "id": "issue-email",
+      "from": "issues",
+      "to": "operator",
+      "label": "email",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "urgent-email",
+      "from": "hc",
+      "to": "operator",
+      "label": "email",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Healthy = usable + fresh",
+      "items": [
+        "Same timeout, size cap, parser and account check as the relay",
+        "Fresh: newest post ≤6h behind in-use mirrors only"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Two-tier alerts",
+      "items": [
+        "Urgent: <2 in-use healthy → once per episode + one all-clear",
+        "Soft: one issue per mirror down 24h, auto-closed",
+        "Health check silent 24h → alert"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Hostile input (§4)",
+      "items": [
+        "Internal and metadata addresses refused at probe time",
+        "Only hostnames, fixed labels and numbers are published"
+      ]
+    }
+  ]
+}

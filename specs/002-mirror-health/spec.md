@@ -1,6 +1,6 @@
 # Feature Specification: Mirror Health & Status Page
 
-**Feature:** `002-mirror-health` | **Status:** Draft | **Created:** 2026-10-10
+**Feature:** `002-mirror-health` | **Status:** Clarified | **Created:** 2026-10-10
 
 > Constitution §1: this document describes **behaviour**, not implementation.
 > No language, library, protocol or vendor names. Those belong in `plan.md`.
@@ -37,7 +37,7 @@ What this feature must give the operator, in priority order:
 - **Round**: one scheduled pass that probes every in-use and candidate mirror.
 - **Usable**: a probe result that meets every condition in FR-3.
 - **Fresh**: a usable result whose newest post is recent enough (FR-4).
-- **Healthy**: usable and fresh.
+- **Healthy**: usable, and either fresh or of unknown freshness (FR-4, D-4).
 
 ## User Scenarios
 
@@ -52,7 +52,11 @@ What this feature must give the operator, in priority order:
 - **AC-1.2** Given 2 in-use mirrors are healthy, when a round completes, then no
   urgent alert is raised.
 - **AC-1.3** Given the previous round was at risk, when a round finds 2 or more
-  in-use mirrors healthy, then the operator is told the risk has cleared.
+  in-use mirrors healthy, then the operator is told **once** that the risk has
+  cleared.
+- **AC-1.6** Given the relay stays at risk across several rounds, then the urgent
+  alert is sent **once per at-risk episode** on each channel, not once per round
+  (D-3). While the episode lasts, the status page keeps showing the risk.
 - **AC-1.4** The urgent alert reaches the operator through a channel that does not
   depend on the relay's message delivery working.
 - **AC-1.5** Given rounds stop happening altogether, then the operator is alerted.
@@ -99,7 +103,8 @@ whether the relay's sources are healthy.
 I prefer mirrors that stay up, not mirrors that happen to be up right now.
 
 - **AC-4.1** For each mirror the page shows uptime over the last 7 days and the last
-  30 days, as the share of results that were healthy.
+  30 days, as the share of results that were healthy. A usable result of unknown
+  freshness counts as healthy (D-4).
 - **AC-4.2** For each mirror the page shows its recent results as a trend that makes
   flapping visible.
 - **AC-4.3** Results older than 90 days are discarded.
@@ -152,9 +157,8 @@ that** I know what to switch to when an in-use mirror dies.
 - **FR-8** The urgent alert MUST reach the operator through at least two channels,
   neither of which depends on the relay's message delivery working.
 - **FR-9** The system MUST alert the operator when no round has completed within
-  [NEEDS CLARIFICATION: how long without a completed round before the "health check
-  stopped" alert fires? Rounds are scheduled about every 6 hours, but the scheduler
-  can start them hours late, so too short means false alarms.].
+  **24 hours**, which is about four missed rounds. A late warning is preferred to a
+  false alarm (D-1).
 - **FR-10** Soft warnings (US-2) MUST be durable, at most one open per mirror, and
   visible to the operator outside the status page.
 
@@ -170,7 +174,8 @@ that** I know what to switch to when an in-use mirror dies.
 - **FR-12** Malformed entries MUST be dropped one at a time. A bad entry MUST NOT
   cause the rest of the list to be rejected.
 - **FR-13** Candidates MUST be de-duplicated, MUST exclude in-use mirrors, and MUST
-  be capped at 25.
+  be capped at 25. Formerly in-use mirrors (E-17) take priority over discovered
+  entries within that cap.
 - **FR-14** If the community list is unavailable or unreadable, the system MUST keep
   the last accepted candidate set, MUST show on the page since when discovery has
   been stale, and MUST NOT treat this as a failed round.
@@ -194,7 +199,7 @@ that** I know what to switch to when an in-use mirror dies.
 |---|-----------|--------------------|
 | E-1 | A mirror answers quickly but serves a feed days old | Usable but **stale**: not healthy (FR-4) |
 | E-2 | A candidate's posts are dated in the future, which would make honest mirrors look stale | Future times ignored; candidates never move the reference (FR-4) |
-| E-3 | No in-use mirror is usable | Freshness **unknown** for all; urgent alert (FR-7); candidates still listed |
+| E-3 | No in-use mirror is usable | Freshness **unknown** for all; urgent alert (FR-7); usable candidates count as healthy (D-4), so the page shows exactly which ones to switch to |
 | E-4 | The monitored account has not posted for a week | All honest mirrors share the same newest post, so all are fresh; the account being quiet is not a mirror failure |
 | E-5 | A mirror answers by sending the request to another address | Not usable, reason "sent elsewhere"; the other address is never contacted |
 | E-6 | A mirror returns an error page, a rate-limit notice, or an empty feed with a success status | Not usable (malformed content / no posts) |
@@ -208,7 +213,7 @@ that** I know what to switch to when an in-use mirror dies.
 | E-14 | A response contains text designed to be shown on the page or in an alert | Never published (FR-16); displayed as plain text even if it were (FR-17) |
 | E-15 | A mirror flaps healthy and unhealthy every round | No soft warning (AC-2.2); the trend shows the flapping (AC-4.2) |
 | E-16 | A mirror is unhealthy for 3 days | One warning, raised once, updated, not repeated (AC-2.3) |
-| E-17 | The operator removes a mirror from the configuration while a warning is open for it | [NEEDS CLARIFICATION: is the open warning resolved, and is the removed mirror's history kept and shown (e.g. as "formerly in use") or dropped? If it reappears through discovery, is it a candidate with its old history?] |
+| E-17 | The operator removes a mirror from the configuration while a warning is open for it | Its open warning is resolved, its history is kept, and it becomes a **candidate** carrying that history, probed whether or not the community list names it. It takes priority over discovered entries within the cap of 25. If added back to the configuration, it is in use again with its full history (D-2) |
 | E-18 | Fewer than 2 mirrors are configured at all | Permanently at risk by definition: the verdict says so and the urgent alert fires (FR-7) |
 | E-19 | Two rounds overlap | Results are not lost or duplicated, and history is not corrupted |
 | E-20 | The stored history is missing or corrupt | The round still runs and records results; history restarts; this is logged loudly, not silently |
@@ -228,14 +233,24 @@ that** I know what to switch to when an in-use mirror dies.
 
 ## Open Questions
 
-- **Q-1** FR-9: how long without a completed round before alerting.
-- **Q-2** E-17: what happens to a mirror removed from the configuration.
-- **Q-3** [NEEDS CLARIFICATION: while the relay stays at risk across several rounds,
-  is the urgent alert repeated every round, or sent once per at-risk episode with
-  one all-clear (as 001 FR-10 does for outages)? Every round is louder; once per
-  episode is calmer but easier to miss.]
-- **Q-4** [NEEDS CLARIFICATION: in uptime figures (AC-4.1), does a result whose
-  freshness is **unknown** (E-3) count as healthy, unhealthy, or not count at all?]
+None. All resolved on 2026-10-10. See Decisions.
+
+## Decisions
+
+Resolved 2026-10-10 via `/speckit-clarify`. Recorded here so the reasoning survives
+context loss.
+
+| # | Question | Decision | Reasoning |
+|---|----------|----------|-----------|
+| D-1 | How long without a completed round before the "health check stopped" alert (FR-9) | **24 hours** | The operator prefers late warnings to false alarms. The scheduler already starts runs 4–7 hours apart, not every 6, so a 12-hour limit would fire on ordinary lateness. 24 hours is about four missed rounds: certainly broken, and still long before discovery staleness matters. |
+| D-2 | What happens to a mirror removed from the configuration (E-17) | It **comes back as a candidate**, keeping its history; its open warning is resolved | The operator vetted it once, so it is a better replacement than an unknown discovered host, which is why it ranks ahead of them within the cap. Keeping its history means that adding it back to the configuration starts from real evidence rather than from zero. |
+| D-3 | Urgent alert per round, or per at-risk episode (Q-3) | **Once per episode**, plus one all-clear | Matches how 001 FR-10 handles outages. An alert repeated every round trains the operator to ignore it. The page shows the ongoing risk throughout, so "once" never means "forgotten". This applies to **every** urgent channel (see the note below). |
+| D-4 | Does unknown freshness count as healthy (Q-4) | **Yes**, folded into the definition of "healthy" | Unknown happens only when no in-use mirror is usable. Then a usable candidate is exactly what the operator needs to find, and counting it unhealthy would hide replacements during the very outage they are needed for. It cannot weaken the urgent alert: in-use mirrors are unusable whenever freshness is unknown, so they are never healthy. |
+
+**Note for `plan.md` (from D-3):** a channel that fires on every failed scheduled run
+cannot carry the urgent alert. While at risk, each round would count as a fresh
+alert. The plan must use only channels that alert on a change of state, not on every
+run. A failed run stays reserved for "the health check itself broke".
 
 ## Success
 
