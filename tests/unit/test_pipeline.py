@@ -286,7 +286,7 @@ class RefusingSink(RecordingSink):
     def send(self, message):
         from tweet_relay.models import DeliveryFailed, MessageRejected
         self.attempts += 1
-        minimal = message.startswith("New post from @")
+        minimal = "(its text could not be delivered)" in message
         if (self.poison in message) or (minimal and self.refuse_minimal):
             if self.plain_failure:
                 raise DeliveryFailed("channel down")

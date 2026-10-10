@@ -32,6 +32,13 @@ ENDPOINT = "https://api.callmebot.com/whatsapp.php"
 _SUCCESS_BODY = re.compile(r"\bqueued\b", re.I)
 _ERROR_BODY = re.compile(r"\b(error|invalid|not\s+registered|must\s+provide|apikey)\b", re.I)
 _TAG = re.compile(r"<[^>]*>")
+# E-21/D-4: only these refusals can be about one particular message, and only when the
+# service's words do not point at the account or at rate limiting. 401/404/429 and
+# anything mentioning keys, limits or a paused account are channel problems.
+_MESSAGE_REFUSAL_CODES = frozenset({400, 403, 413, 414, 422})
+_CHANNEL_WORDING = re.compile(
+    r"\b(?:too\s+many|rate[\s-]*limit\w*|rate|limit\w*|quota|blocked|paused|"
+    r"api\s*key|invalid|not\s+registered|unauthori[sz]ed)\b", re.I)
 _REASON_CHARS = 300
 
 
@@ -130,12 +137,13 @@ class CallMeBotSink:
                     elif response.status_code >= 400:
                         reason = _reason(body, message, [params["apikey"], params["phone"]])
                         detail = f"rejected with HTTP {response.status_code}: {reason!r}"
-                        if response.status_code == 429:
-                            # Rate limited: about the channel, and a retry adds traffic.
-                            raise DeliveryFailed(detail)
-                        # A refusal of this particular message (E-21): the 403 seen live
-                        # on 2026-10-10 blocked one post while others went through.
-                        raise MessageRejected(detail)
+                        if (response.status_code in _MESSAGE_REFUSAL_CODES
+                                and not _CHANNEL_WORDING.search(reason)):
+                            # A refusal of this particular message (E-21): the 403 seen
+                            # live on 2026-10-10 blocked one post while others went through.
+                            raise MessageRejected(detail)
+                        # Account, key or rate-limit trouble: a retry only adds traffic.
+                        raise DeliveryFailed(detail)
                     else:
                         verdict = _judge(body, message)
                         if verdict is True:

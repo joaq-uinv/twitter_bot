@@ -456,8 +456,23 @@ with no post text.
 - If the minimal form is refused too, its fixed text cannot be the cause, so it is
   an ordinary delivery failure and the A-8 alerting applies.
 
-429, 5xx, timeouts and account-level replies (A-7's "paused") get no retry: they are
-about the channel, and a retry only adds traffic.
+Only 400/403/413/414/422 count as a refusal of the message, and only when the
+scrubbed reason has no account or rate-limit wording (`too many`, `limit`, `quota`,
+`blocked`, `paused`, `api key`, `invalid`, …). 401, 404, 429, 5xx, timeouts and
+account-level replies (A-7's "paused") get no retry: they are about the channel, and
+a retry only adds traffic. *Tightened after review, which found the first version
+treating every 4xx except 429 as message-specific, including a 403 that said
+"blocked: too many requests".*
+
+**Accepted trade-off:** a one-off, channel-level 403 with no telltale wording will
+permanently deliver that one post in minimal form, even though its text was fine.
+The operator still gets the link, the WhatsApp message says the text could not be
+delivered, and the run summary's headline shows ⚠️ with a count. That beats blocking
+the queue.
+
+**Unverified:** the cause of the 403 is a hypothesis, namely content filtering of
+that post's text. It could not be confirmed without sending variants. The fix is
+sound whichever cause it was.
 
 **Found while investigating: two relays were running.** The local container retired
 in A-6 was still up. `restart: unless-stopped` had brought it back on every boot

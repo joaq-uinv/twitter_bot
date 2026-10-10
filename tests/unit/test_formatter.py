@@ -61,12 +61,19 @@ def test_truncation_boundary_is_exact():
 
 # --- E-21 / D-4: minimal form for a message the channel refuses ---
 
-def test_minimal_form_carries_only_the_account_and_the_link():
+@pytest.mark.parametrize("kind,author,lead", [
+    (TweetKind.ORIGINAL, "santtiagom_", "New post from @santtiagom_"),
+    (TweetKind.RETWEET, "ezecostales", "@santtiagom_ reposted @ezecostales"),
+    (TweetKind.QUOTE, "santtiagom_", "@santtiagom_ quoted a post"),
+    (TweetKind.REPLY, "santtiagom_", "@santtiagom_ replied"),
+])
+def test_minimal_form_names_the_kind_and_carries_only_the_link(kind, author, lead):
+    """Review #3: a repost must not be presented as the account's own post."""
     from tweet_relay.formatter import render_minimal
-    post = t(id=2108539369770672204, text="prompt engineering 👀", kind=TweetKind.RETWEET)
+    post = t(id=2108539369770672204, text="prompt engineering 👀", kind=kind, author=author)
     assert render_minimal(post, "santtiagom_") == (
-        "New post from @santtiagom_ (its text could not be delivered): "
-        "https://x.com/santtiagom_/status/2108539369770672204")
+        f"{lead} (its text could not be delivered): "
+        f"https://x.com/{author}/status/2108539369770672204")
 
 
 def test_minimal_form_never_includes_post_text():
