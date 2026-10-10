@@ -57,3 +57,19 @@ def test_truncation_boundary_is_exact():
     out = render(t(text="y" * (MAX_TEXT_CHARS + 50)), "santtiagom_")
     body = out.split("\n")[0] if "\n" in out else out
     assert "y" * MAX_TEXT_CHARS not in out or out.count("y") <= MAX_TEXT_CHARS
+
+
+# --- E-21 / D-4: minimal form for a message the channel refuses ---
+
+def test_minimal_form_carries_only_the_account_and_the_link():
+    from tweet_relay.formatter import render_minimal
+    post = t(id=2108539369770672204, text="prompt engineering 👀", kind=TweetKind.RETWEET)
+    assert render_minimal(post, "santtiagom_") == (
+        "New post from @santtiagom_ (its text could not be delivered): "
+        "https://x.com/santtiagom_/status/2108539369770672204")
+
+
+def test_minimal_form_never_includes_post_text():
+    from tweet_relay.formatter import render_minimal
+    post = t(text="UNIQUE-MARKER-7f3a anything at all")
+    assert "UNIQUE-MARKER-7f3a" not in render_minimal(post, "santtiagom_")

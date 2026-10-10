@@ -30,6 +30,17 @@ def render(tweet: Tweet, monitored_handle: str) -> str:
     return "\n\n".join(parts)
 
 
+def render_minimal(tweet: Tweet, monitored_handle: str) -> str:
+    """E-21/D-4: fixed wording plus the link, no post text.
+
+    Used only after the channel refused the full message. Nothing in it comes from the
+    post except its validated link, so if this is refused too, the channel is the
+    problem rather than the content.
+    """
+    return (f"New post from @{monitored_handle} (its text could not be delivered): "
+            f"{tweet.url}")
+
+
 def render_bootstrap(handle: str, count: int) -> str:
     return (f"✅ Relay is live for @{handle}.\n\n"
             f"{count} existing posts marked as already seen — you will only get new ones.")

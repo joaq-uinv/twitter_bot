@@ -435,3 +435,41 @@ verification run would have triggered it. Fixes:
 **Accepted as intended (M-6):** during a long outage every scheduled run fails, so
 GitHub sends a failure email each time. That is the deliberate trade-off of A-8.
 Healthchecks alerts only on a change of state and stays the calm primary signal.
+
+## Amendment A-11 — a message the channel refuses no longer blocks the queue (2026-10-10)
+
+**Incident.** After the account was resumed, CallMeBot answered **HTTP 403** (an
+Apache "Forbidden" page) for one post, `2108539369770672204`, on every attempt from
+14:52 onward. It accepted a plain test message and the workflow's failure alert from
+the same account in the same period. Delivery stops at the first failure (E-5), so
+that one post blocked every post behind it indefinitely: 7 were queued when this was
+found. The trigger inside the text is not known. Finding it would mean sending
+variants to the operator's phone, and the flaw needs fixing whatever the trigger is.
+
+**Decision (spec 001 E-21, D-4).** A refusal of *this message* (HTTP 4xx other than
+429) raises `MessageRejected`, a subclass of `DeliveryFailed`. The pipeline then
+retries that post once with `render_minimal()`: fixed wording plus the post link,
+with no post text.
+- If accepted, the post is marked seen, the queue moves on, and the log shows
+  `delivered in minimal form tweet_id=N` at WARNING, which the run summary lists
+  under Problems.
+- If the minimal form is refused too, its fixed text cannot be the cause, so it is
+  an ordinary delivery failure and the A-8 alerting applies.
+
+429, 5xx, timeouts and account-level replies (A-7's "paused") get no retry: they are
+about the channel, and a retry only adds traffic.
+
+**Found while investigating: two relays were running.** The local container retired
+in A-6 was still up. `restart: unless-stopped` had brought it back on every boot
+since. After the operator resumed CallMeBot, both it and the Actions run delivered
+the backlog, and the operator confirmed duplicates. It also kept retrying the
+refused post every 15 minutes. The container is now stopped. `docker compose down`
+is needed to stop it returning on boot, and CLAUDE.md's warning about this was not
+enough on its own.
+
+**Mirrors.** `DEFAULT_INSTANCES` was re-verified (specs/002 research R-2):
+- `nitter.netbub.com` (now a bot challenge) and `nitter.jaydenha.uk` (an HTML access
+  queue) were replaced with `nitter.pp.ua` and `shitter.thepixora.com`.
+- The list is ordered fastest first. `meowing.monster` (12 s) goes last.
+- The live tests also caught `kareem.one` failing and then recovering within
+  minutes. Failover covers that, and spec 002 will make it visible.

@@ -27,6 +27,14 @@ class DeliveryFailed(Exception):
     """A message was not delivered. Never raised when delivery actually succeeded."""
 
 
+class MessageRejected(DeliveryFailed):
+    """The channel refused this particular message, not the channel being down (E-21).
+
+    Callers may retry the same post once in minimal form (D-4). Rate limiting, server
+    errors and account-level problems are plain DeliveryFailed, never this.
+    """
+
+
 class TweetKind(str, Enum):
     ORIGINAL = "original"
     RETWEET = "retweet"

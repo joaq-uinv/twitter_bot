@@ -11,8 +11,9 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from .formatter import render, render_bootstrap, render_outage, render_withheld
-from .models import DeliveryFailed, SourceUnavailable, TweetKind
+from .formatter import (render, render_bootstrap, render_minimal, render_outage,
+                        render_withheld)
+from .models import DeliveryFailed, MessageRejected, SourceUnavailable, TweetKind
 from .state import load_state, save_state, state_lock
 
 log = logging.getLogger(__name__)
@@ -32,6 +33,19 @@ class Pipeline:
         self.config = config
         self.source = source
         self.sink = sink
+
+    def _deliver(self, t, handle: str) -> None:
+        """Send one post. Raises DeliveryFailed if it was not delivered in any form.
+
+        E-21/D-4: a post the channel refuses outright is retried once in minimal form,
+        so one refused text cannot block every post queued behind it.
+        """
+        try:
+            self.sink.send(render(t, handle))
+        except MessageRejected as exc:
+            log.warning("message refused for %s, retrying in minimal form: %s", t.id, exc)
+            self.sink.send(render_minimal(t, handle))      # failure propagates as usual
+            log.warning("delivered in minimal form tweet_id=%s", t.id)
 
     def _wanted(self, kind: TweetKind) -> bool:
         if kind is TweetKind.RETWEET:
@@ -113,7 +127,7 @@ class Pipeline:
 
             for t in batch:
                 try:
-                    self.sink.send(render(t, handle))
+                    self._deliver(t, handle)
                 except DeliveryFailed as exc:
                     # Stop the batch: the channel is unhealthy, and continuing would
                     # burn the daily quota. Unsent posts stay pending for next check.

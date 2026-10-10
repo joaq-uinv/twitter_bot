@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 import httpx
 
-from ..models import DeliveryFailed
+from ..models import DeliveryFailed, MessageRejected
 
 log = logging.getLogger(__name__)
 
@@ -129,8 +129,13 @@ class CallMeBotSink:
                         last_error = f"HTTP {response.status_code}"
                     elif response.status_code >= 400:
                         reason = _reason(body, message, [params["apikey"], params["phone"]])
-                        raise DeliveryFailed(
-                            f"rejected with HTTP {response.status_code}: {reason!r}")
+                        detail = f"rejected with HTTP {response.status_code}: {reason!r}"
+                        if response.status_code == 429:
+                            # Rate limited: about the channel, and a retry adds traffic.
+                            raise DeliveryFailed(detail)
+                        # A refusal of this particular message (E-21): the 403 seen live
+                        # on 2026-10-10 blocked one post while others went through.
+                        raise MessageRejected(detail)
                     else:
                         verdict = _judge(body, message)
                         if verdict is True:

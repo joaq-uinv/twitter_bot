@@ -226,3 +226,28 @@ def test_console_sink_lines_cannot_pass_for_log_lines(capsys):
                        "sent=9 withheld=0 failed=0 bootstrapped=False outage=False")
     for line in capsys.readouterr().out.splitlines():
         assert line.startswith("| "), line
+
+
+# --- E-21 / D-4: which refusals are about the message, not the channel ---
+
+@respx.mock
+@pytest.mark.parametrize("status", [400, 403, 413, 414])
+def test_message_refusal_is_reported_as_rejected(config, status):
+    from tweet_relay.models import MessageRejected
+    respx.get(API).mock(httpx.Response(status, text="Forbidden"))
+    with pytest.raises(MessageRejected):
+        sink(config).send("hi")
+
+
+@respx.mock
+@pytest.mark.parametrize("response", [
+    httpx.Response(429, text="Too Many Requests"),        # rate limit: a retry adds traffic
+    httpx.Response(503, text="unavailable"),              # channel down
+    httpx.Response(208, text="Your Account is Paused"),   # account-level (A-7)
+])
+def test_channel_problems_are_not_reported_as_message_rejection(config, response):
+    from tweet_relay.models import MessageRejected
+    respx.get(API).mock(response)
+    with pytest.raises(DeliveryFailed) as exc:
+        sink(config, max_attempts=1).send("hi")
+    assert not isinstance(exc.value, MessageRejected)
