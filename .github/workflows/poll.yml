@@ -29,13 +29,31 @@ jobs:
   poll:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      HANDLE: santtiagom_
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      # Dead man's switch (plan A-9). Optional: unset means no pings, plus a warning.
+      HC_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
+      # 'true' only for a manual dry run; scheduled runs have no inputs (plan A-10).
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
     steps:
       - uses: actions/checkout@v4
+
+      # /start lets Healthchecks measure run time and notice a run that hangs.
+      # Dry runs never ping: a manual check is not a heartbeat of the schedule (A-10).
+      - name: Signal start to Healthchecks
+        if: env.DRY_RUN != 'true'
+        run: |
+          if [ -z "$HC_PING_URL" ]; then
+            echo "::warning title=Healthchecks not configured::Set the HEALTHCHECKS_PING_URL secret so a stalled schedule is noticed."
+            exit 0
+          fi
+          curl -fsS -m 10 --retry 3 -o /dev/null "$HC_PING_URL/start" || echo "::warning::Healthchecks start ping failed"
 
       - name: Write run configuration
         run: |
           {
-            echo "X_PROFILE_URL=https://x.com/santtiagom_"
+            echo "X_PROFILE_URL=https://x.com/$HANDLE"
             echo "CALLMEBOT_PHONE=${{ secrets.CALLMEBOT_PHONE }}"
             echo "CALLMEBOT_APIKEY=${{ secrets.CALLMEBOT_APIKEY }}"
             echo "INCLUDE_RETWEETS=true"
@@ -49,33 +67,97 @@ jobs:
             echo "HOST_GID=$(id -g)"
           } > .env
 
+      # Every step's output is also appended to run.log, which feeds the job summary
+      # and the Healthchecks ping body (plan A-9), so nobody has to open the raw log.
       - name: Build image
-        run: docker compose build
+        run: |
+          set -o pipefail
+          docker compose build --progress=plain 2>&1 | tee -a run.log
 
       - name: Run one check (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
-        run: docker compose run --rm relay run --once --dry-run
+        run: |
+          set -o pipefail
+          docker compose run --rm relay run --once --dry-run 2>&1 | tee -a run.log
 
       - name: Run one check
         if: "!(github.event_name == 'workflow_dispatch' && inputs.dry_run)"
-        run: docker compose run --rm relay run --once
+        run: |
+          set -o pipefail
+          docker compose run --rm relay run --once 2>&1 | tee -a run.log
 
+      # Runs even when the check failed: a batch that sent 3 posts and then hit a
+      # delivery failure exits non-zero (plan A-8), and those 3 must still be
+      # recorded as seen or the next run sends them again (FR-12 per-success saves).
+      # always(), not !cancelled(): a timeout counts as cancelled, and sends made
+      # before it must still be saved (A-10). Never for a dry run: it works on a
+      # throwaway copy, and this step is the second guard that its result is not saved.
       - name: Persist state if it changed
+        if: ${{ always() && env.DRY_RUN != 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add state/seen.json
-          git diff --cached --quiet || git commit -m "state: update seen ids [skip ci]"
+          # The run URL makes `git log -p state/seen.json` a ledger: each newly seen
+          # tweet ID links to the run that delivered it, and that run's summary.
+          git diff --cached --quiet || git commit -m "state: update seen ids [skip ci]" -m "Run: $RUN_URL"
           git push
 
+      # run.log is about to leave GitHub's log viewer, the only place secrets are
+      # masked. The app already redacts them (FR-13, A-9); this is the backstop for
+      # output the app does not control, such as a config error echoing its input.
+      - name: Scrub run log
+        if: ${{ !cancelled() }}
+        env:
+          S1: ${{ secrets.CALLMEBOT_APIKEY }}
+          S2: ${{ secrets.CALLMEBOT_PHONE }}
+        run: |
+          touch run.log
+          log=$(cat run.log)
+          for s in "$S1" "$S2" "${S2#+}"; do
+            [ ${#s} -ge 4 ] && log=${log//"$s"/***}
+          done
+          printf '%s\n' "$log" > run.log
+
+      - name: Write job summary
+        if: ${{ !cancelled() }}
+        # Never rebuilds: if the image did not build, a second attempt would only burn
+        # the job's time budget before the Healthchecks ping (A-10).
+        run: |
+          docker image inspect tweet-relay:latest > /dev/null 2>&1 &&
+          docker compose run --rm -T --no-deps relay summarize \
+              --exit-code "${{ job.status == 'success' && '0' || '1' }}" \
+              --handle "$HANDLE" --run-url "$RUN_URL" < run.log >> "$GITHUB_STEP_SUMMARY" \
+            || printf '## ❌ tweet-relay: summary could not be rendered (did the image build?)\n\nRun: %s\n' \
+                 "$RUN_URL" >> "$GITHUB_STEP_SUMMARY"
+
+      # Success or /fail, with the run URL and the log tail as the ping body: the
+      # Healthchecks event log then shows why, and its alert email links the run.
+      - name: Report to Healthchecks
+        if: ${{ !cancelled() && env.HC_PING_URL != '' && env.DRY_RUN != 'true' }}
+        run: |
+          suffix=""
+          [ "${{ job.status }}" = "success" ] || suffix="/fail"
+          { echo "Run: $RUN_URL"; tail -c 90000 run.log; } \
+            | curl -fsS -m 10 --retry 3 -o /dev/null --data-binary @- "$HC_PING_URL$suffix" \
+            || echo "::warning::Healthchecks ping failed"
+
       # The app's own FR-10 outage alert only fires once app code is running.
-      # A build failure or crash never reaches that code at all, so this is the
-      # only thing that would notice — constitution §7, fail loud.
+      # A build failure or crash never reaches that code at all, so this is a
+      # second try at reaching the operator — constitution §7, fail loud.
+      #
+      # It goes through the same CallMeBot account, so it cannot fire when that
+      # account is the failure (plan A-7: paused for three weeks, this step reported
+      # nothing). GitHub's own failed-run email is the independent channel; this step
+      # checks CallMeBot's reply and annotates the run if the alert was not accepted.
+      # The body is never printed: it echoes the phone number.
       - name: Alert on workflow failure
         if: failure()
         run: |
-          curl -fsS -G "https://api.callmebot.com/whatsapp.php" \
+          reply=$(curl -sS -G "https://api.callmebot.com/whatsapp.php" \
             --data-urlencode "phone=${{ secrets.CALLMEBOT_PHONE }}" \
-            --data-urlencode "text=⚠️ tweet-relay GitHub Actions workflow failed (not a source outage — check the run log): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --data-urlencode "apikey=${{ secrets.CALLMEBOT_APIKEY }}" \
-            > /dev/null
+            --data-urlencode "text=⚠️ tweet-relay GitHub Actions workflow failed — check the run log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --data-urlencode "apikey=${{ secrets.CALLMEBOT_APIKEY }}") || reply=""
+          if ! grep -qi "queued" <<<"$reply"; then
+            echo "::error title=WhatsApp alert not delivered::CallMeBot did not accept the failure alert, so the delivery channel itself is likely down (paused account, bad key, outage). See the 'Run one check' log for the service's reason."
+          fi

@@ -63,9 +63,9 @@ hypothesis hunt for counterexamples. Full evidence in
 ## Tests
 
 ```bash
-docker compose run --rm relay pytest                      # 271 tests, no network
-docker compose run --rm relay pytest tests/adversarial -v # hostile input
-docker compose run --rm relay pytest -m live              # real mirrors (opt-in)
+docker compose run --rm --entrypoint python relay -m pytest                      # 328 tests, no network
+docker compose run --rm --entrypoint python relay -m pytest tests/adversarial -v # hostile input
+docker compose run --rm --entrypoint python relay -m pytest -m live              # real mirrors (opt-in)
 ```
 
 The adversarial suite exists because the relay parses XML from volunteer-run third

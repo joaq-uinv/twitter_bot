@@ -87,6 +87,7 @@ class Pipeline:
                     result.sent = 1
                 except DeliveryFailed as exc:
                     log.error("could not deliver liveness message: %s", exc)
+                    result.failed = 1      # A-10: a paused channel on a first run is not green
                 result.bootstrapped = True
                 log.info("check complete: bootstrapped %d existing posts as seen",
                          len(tweets))
@@ -122,12 +123,14 @@ class Pipeline:
                 state.mark_seen(t.id)
                 save_state(cfg.STATE_PATH, state)   # FR-12: persist per success
                 result.sent += 1
+                log.info("delivered tweet_id=%s", t.id)   # traced by the run summary
 
             if withheld and not result.failed:
                 try:
                     self.sink.send(render_withheld(len(withheld)))
                 except DeliveryFailed as exc:
-                    log.warning("could not deliver withheld notice: %s", exc)
+                    log.error("could not deliver withheld notice: %s", exc)
+                    result.failed = 1      # A-8 applies to every delivery, notices included
 
             save_state(cfg.STATE_PATH, state)
             log.info("check complete: sent=%d withheld=%d", result.sent, result.withheld)

@@ -10,6 +10,7 @@ import html
 import logging
 import re
 import time
+from urllib.parse import quote
 
 import httpx
 
@@ -30,24 +31,60 @@ ENDPOINT = "https://api.callmebot.com/whatsapp.php"
 # therefore misreads a successful send whenever the post itself contains one.
 _SUCCESS_BODY = re.compile(r"\bqueued\b", re.I)
 _ERROR_BODY = re.compile(r"\b(error|invalid|not\s+registered|must\s+provide|apikey)\b", re.I)
+_TAG = re.compile(r"<[^>]*>")
+_REASON_CHARS = 300
+
+
+def _strip_echo(body: str, sent_text: str) -> str:
+    """The body minus our own echoed payload, raw or HTML-escaped."""
+    for echo in (sent_text, html.escape(sent_text), html.escape(sent_text, quote=False)):
+        if echo:
+            body = body.replace(echo, " ")
+    return body
 
 
 def _judge(body: str, sent_text: str) -> bool | None:
     """True = delivered, False = refused, None = unrecognised.
 
     The echoed payload is removed first so we judge the service's own words, never
-    the post's. Both raw and HTML-escaped forms are stripped, since the echo may be
-    escaped.
+    the post's.
     """
-    residual = body
-    for echo in (sent_text, html.escape(sent_text), html.escape(sent_text, quote=False)):
-        if echo:
-            residual = residual.replace(echo, " ")
+    residual = _strip_echo(body, sent_text)
     if _SUCCESS_BODY.search(residual):
         return True
     if _ERROR_BODY.search(residual):
         return False
     return None
+
+
+def _reason(body: str, sent_text: str, secrets: list[str]) -> str:
+    """The service's own words, fit for an exception message and a log line (§7).
+
+    Found live on 2026-10-09: a paused account failed every send for three weeks
+    while the log showed only the first 120 characters of the body, which are always
+    our echoed text. The cause sat just past the cut.
+
+    The body is third-party input on its way into logs, so every form of the key is
+    removed before truncation (a cut could otherwise leave part of it) and again
+    after unescaping (which could reassemble an escaped form) - FR-13.
+
+    The phone number goes too: the body opens with "Message to: <phone>", and run logs
+    leave GitHub's masked log viewer for the run summary and the uptime monitor (A-9).
+    """
+    forms = sorted({f for s in secrets if s
+                    for f in (s, s.lstrip("+"), quote(s, safe=""), html.escape(s)) if f},
+                   key=len, reverse=True)
+
+    def scrub(text: str) -> str:
+        for form in forms:
+            text = text.replace(form, "***")
+        return text
+
+    # Scrubbed before the echo is stripped as well: removing an echo that happens to be
+    # a prefix of a secret would otherwise leave a remainder no scrub form matches.
+    text = scrub(_strip_echo(scrub(body), sent_text))
+    text = scrub(html.unescape(_TAG.sub(" ", text)))
+    return " ".join(text.split())[:_REASON_CHARS]
 
 
 class CallMeBotSink:
@@ -91,19 +128,20 @@ class CallMeBotSink:
                     if response.status_code >= 500:
                         last_error = f"HTTP {response.status_code}"
                     elif response.status_code >= 400:
-                        raise DeliveryFailed(f"rejected with HTTP {response.status_code}")
+                        reason = _reason(body, message, [params["apikey"], params["phone"]])
+                        raise DeliveryFailed(
+                            f"rejected with HTTP {response.status_code}: {reason!r}")
                     else:
                         verdict = _judge(body, message)
                         if verdict is True:
                             return
+                        reason = _reason(body, message, [params["apikey"], params["phone"]])
                         if verdict is False:
                             # A 200 that describes a failure (E-19).
-                            raise DeliveryFailed(
-                                f"service reported an error: {body[:120]!r}")
+                            raise DeliveryFailed(f"service reported an error: {reason!r}")
                         # FR-12: an unrecognised body is not evidence of delivery.
                         raise DeliveryFailed(
-                            f"unrecognised response, not treating as delivered: "
-                            f"{body[:120]!r}")
+                            f"unrecognised response, not treating as delivered: {reason!r}")
                 except httpx.HTTPError as exc:
                     last_error = type(exc).__name__
                 if attempt < self.max_attempts:

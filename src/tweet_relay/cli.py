@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import shutil
 import sys
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -94,6 +96,18 @@ def cmd_test_whatsapp(config: Config) -> int:
 def cmd_run(config: Config, once: bool, dry_run: bool) -> int:
     if not dry_run:
         _require_delivery_or_exit(config)
+        return _run(config, once, dry_run)
+    # A dry run works on a throwaway copy of the delivery history (plan A-10). The
+    # pipeline marks rendered posts as seen; against the real history, the documented
+    # "sends nothing" check would make every pending post undeliverable.
+    with tempfile.TemporaryDirectory(prefix="tweet-relay-dry-run-") as scratch:
+        copy = os.path.join(scratch, "seen.json")
+        if os.path.exists(config.STATE_PATH):
+            shutil.copyfile(config.STATE_PATH, copy)
+        return _run(config.model_copy(update={"STATE_PATH": copy}), once, dry_run)
+
+
+def _run(config: Config, once: bool, dry_run: bool) -> int:
     source = NitterRssSource(config)
     sink = ConsoleSink() if dry_run else CallMeBotSink(config)
     pipeline = Pipeline(config, source, sink)
@@ -104,9 +118,11 @@ def cmd_run(config: Config, once: bool, dry_run: bool) -> int:
         except StateUnwritable as exc:
             print(f"Cannot start:\n\n{exc}", file=sys.stderr)
             return 2
-        print(f"sent={result.sent} withheld={result.withheld} "
-              f"bootstrapped={result.bootstrapped} outage={result.outage}")
-        return 1 if result.outage else 0
+        print(f"sent={result.sent} withheld={result.withheld} failed={result.failed} "
+              f"bootstrapped={result.bootstrapped} outage={result.outage} dry_run={dry_run}")
+        # Non-zero on a delivery failure too: a scheduler's failure notice is the one
+        # alarm that does not travel through the delivery channel (plan A-8, §7).
+        return 1 if result.outage or result.failed else 0
 
     from .scheduler import run_forever
     run_forever(pipeline, config.poll_interval_seconds)
@@ -138,8 +154,17 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("check-source", help="show which mirror answers and what it parses")
     sub.add_parser("test-whatsapp", help="send one real test message")
     sub.add_parser("healthcheck", help="exit non-zero if checks have stalled")
+    summ = sub.add_parser("summarize", help="render a run's log (stdin) as a job summary")
+    summ.add_argument("--exit-code", type=int, required=True)
+    summ.add_argument("--handle", required=True)
+    summ.add_argument("--run-url")
 
     args = parser.parse_args(argv)
+    if args.command == "summarize":
+        # Before _load(): it must also explain runs that died on bad config.
+        from .report import render_summary
+        print(render_summary(sys.stdin.read(), args.exit_code, args.run_url, args.handle))
+        return 0
     config = _load()
     _setup(config)
 
