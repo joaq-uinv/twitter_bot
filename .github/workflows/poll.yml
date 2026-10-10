@@ -34,11 +34,15 @@ jobs:
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       # Dead man's switch (plan A-9). Optional: unset means no pings, plus a warning.
       HC_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
+      # 'true' only for a manual dry run; scheduled runs have no inputs (plan A-10).
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
     steps:
       - uses: actions/checkout@v4
 
       # /start lets Healthchecks measure run time and notice a run that hangs.
+      # Dry runs never ping: a manual check is not a heartbeat of the schedule (A-10).
       - name: Signal start to Healthchecks
+        if: env.DRY_RUN != 'true'
         run: |
           if [ -z "$HC_PING_URL" ]; then
             echo "::warning title=Healthchecks not configured::Set the HEALTHCHECKS_PING_URL secret so a stalled schedule is noticed."
@@ -85,8 +89,11 @@ jobs:
       # Runs even when the check failed: a batch that sent 3 posts and then hit a
       # delivery failure exits non-zero (plan A-8), and those 3 must still be
       # recorded as seen or the next run sends them again (FR-12 per-success saves).
+      # always(), not !cancelled(): a timeout counts as cancelled, and sends made
+      # before it must still be saved (A-10). Never for a dry run: it works on a
+      # throwaway copy, and this step is the second guard that its result is not saved.
       - name: Persist state if it changed
-        if: ${{ !cancelled() }}
+        if: ${{ always() && env.DRY_RUN != 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -114,8 +121,11 @@ jobs:
 
       - name: Write job summary
         if: ${{ !cancelled() }}
+        # Never rebuilds: if the image did not build, a second attempt would only burn
+        # the job's time budget before the Healthchecks ping (A-10).
         run: |
-          docker compose run --rm -T relay summarize \
+          docker image inspect tweet-relay:latest > /dev/null 2>&1 &&
+          docker compose run --rm -T --no-deps relay summarize \
               --exit-code "${{ job.status == 'success' && '0' || '1' }}" \
               --handle "$HANDLE" --run-url "$RUN_URL" < run.log >> "$GITHUB_STEP_SUMMARY" \
             || printf '## ❌ tweet-relay: summary could not be rendered (did the image build?)\n\nRun: %s\n' \
@@ -124,7 +134,7 @@ jobs:
       # Success or /fail, with the run URL and the log tail as the ping body: the
       # Healthchecks event log then shows why, and its alert email links the run.
       - name: Report to Healthchecks
-        if: ${{ !cancelled() && env.HC_PING_URL != '' }}
+        if: ${{ !cancelled() && env.HC_PING_URL != '' && env.DRY_RUN != 'true' }}
         run: |
           suffix=""
           [ "${{ job.status }}" = "success" ] || suffix="/fail"

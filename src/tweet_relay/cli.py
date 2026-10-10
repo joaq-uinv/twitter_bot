@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import shutil
 import sys
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -94,6 +96,18 @@ def cmd_test_whatsapp(config: Config) -> int:
 def cmd_run(config: Config, once: bool, dry_run: bool) -> int:
     if not dry_run:
         _require_delivery_or_exit(config)
+        return _run(config, once, dry_run)
+    # A dry run works on a throwaway copy of the delivery history (plan A-10). The
+    # pipeline marks rendered posts as seen; against the real history, the documented
+    # "sends nothing" check would make every pending post undeliverable.
+    with tempfile.TemporaryDirectory(prefix="tweet-relay-dry-run-") as scratch:
+        copy = os.path.join(scratch, "seen.json")
+        if os.path.exists(config.STATE_PATH):
+            shutil.copyfile(config.STATE_PATH, copy)
+        return _run(config.model_copy(update={"STATE_PATH": copy}), once, dry_run)
+
+
+def _run(config: Config, once: bool, dry_run: bool) -> int:
     source = NitterRssSource(config)
     sink = ConsoleSink() if dry_run else CallMeBotSink(config)
     pipeline = Pipeline(config, source, sink)
@@ -105,7 +119,7 @@ def cmd_run(config: Config, once: bool, dry_run: bool) -> int:
             print(f"Cannot start:\n\n{exc}", file=sys.stderr)
             return 2
         print(f"sent={result.sent} withheld={result.withheld} failed={result.failed} "
-              f"bootstrapped={result.bootstrapped} outage={result.outage}")
+              f"bootstrapped={result.bootstrapped} outage={result.outage} dry_run={dry_run}")
         # Non-zero on a delivery failure too: a scheduler's failure notice is the one
         # alarm that does not travel through the delivery channel (plan A-8, §7).
         return 1 if result.outage or result.failed else 0

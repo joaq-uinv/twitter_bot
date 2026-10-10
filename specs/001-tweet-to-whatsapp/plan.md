@@ -390,3 +390,48 @@ consequences:
 the same official image without Docker Hub's anonymous pull limit from shared CI
 IPs. `# syntax=docker/dockerfile:1` was removed, because it made BuildKit pull its
 frontend from Docker Hub too.
+
+## Amendment A-10 — code review fixes before merging A-7..A-9 (2026-10-10)
+
+A pre-merge review (superpowers:requesting-code-review) found no critical issues.
+It did find that the new run summary could still claim deliveries that never
+happened, which runs against the incident A-7..A-9 exist to fix (001 FR-12).
+
+**I-1: forged summary lines.** `report.py` matched `delivered tweet_id=` and
+`fetched N posts from` anywhere in the log. Third-party text reaches the log inside
+WARNING lines (dropped-item reasons quote the input), so a hostile feed could make
+the public summary show a fake mirror and fake "Delivered" links. The reviewer
+reproduced this, and so did the new tests. Fixes:
+- Every pattern is anchored to a whole line in our own log format.
+- The *last* result line wins.
+- `ConsoleSink` prefixes every line with `| `, so a dry-run post cannot pass for a
+  log line.
+- `tests/adversarial/test_report_forgery.py` covers each of these.
+
+**I-2: a dry run read as a delivery.** The result line now carries `dry_run=`. A
+dry-run summary says "dry run, would send N", and its post list is headed "Rendered
+(dry run)".
+
+**I-3: a failed liveness message gave a green run.** The bootstrap send and the
+withheld notice now set `failed`, so A-8 covers every delivery, not just posts.
+Without this, a paused channel on a first run (or after retargeting the account)
+would reproduce A-7.
+
+**I-4 (pre-existing and severe): dry runs swallowed pending posts.** The pipeline
+marks rendered posts as seen whichever sink it is given, and the workflow committed
+that state. So the documented "manual verification, sends nothing" run made every
+pending post undeliverable. This was latent since A-6, and the planned post-merge
+verification run would have triggered it. Fixes:
+- `run --dry-run` now works on a throwaway copy of the history.
+- The workflow's Persist step skips dry runs as a second guard.
+
+**Minor fixes:**
+- 4xx failures show the service's own words (A-7 had only covered 2xx).
+- Secrets are scrubbed before the echo is stripped as well.
+- Persist uses `always()`, so sends made before a job timeout are saved.
+- The summary step never rebuilds a missing image.
+- Dry runs do not ping Healthchecks, because a manual check is not a heartbeat.
+
+**Accepted as intended (M-6):** during a long outage every scheduled run fails, so
+GitHub sends a failure email each time. That is the deliberate trade-off of A-8.
+Healthchecks alerts only on a change of state and stays the calm primary signal.

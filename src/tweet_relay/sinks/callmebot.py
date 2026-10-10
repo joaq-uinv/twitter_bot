@@ -80,7 +80,9 @@ def _reason(body: str, sent_text: str, secrets: list[str]) -> str:
             text = text.replace(form, "***")
         return text
 
-    text = scrub(_strip_echo(body, sent_text))
+    # Scrubbed before the echo is stripped as well: removing an echo that happens to be
+    # a prefix of a secret would otherwise leave a remainder no scrub form matches.
+    text = scrub(_strip_echo(scrub(body), sent_text))
     text = scrub(html.unescape(_TAG.sub(" ", text)))
     return " ".join(text.split())[:_REASON_CHARS]
 
@@ -126,7 +128,9 @@ class CallMeBotSink:
                     if response.status_code >= 500:
                         last_error = f"HTTP {response.status_code}"
                     elif response.status_code >= 400:
-                        raise DeliveryFailed(f"rejected with HTTP {response.status_code}")
+                        reason = _reason(body, message, [params["apikey"], params["phone"]])
+                        raise DeliveryFailed(
+                            f"rejected with HTTP {response.status_code}: {reason!r}")
                     else:
                         verdict = _judge(body, message)
                         if verdict is True:

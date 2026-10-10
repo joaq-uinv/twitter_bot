@@ -80,3 +80,40 @@ def test_summarize_renders_stdin_without_any_configuration(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert code == 0
     assert "did not complete" in out and "runs/1" in out
+
+
+# --- dry runs (plan A-10) ---
+
+def test_summary_line_states_dry_run(monkeypatch, config, capsys):
+    from tweet_relay.pipeline import RunResult
+    class FakePipeline:
+        def __init__(self, *a, **kw): pass
+        def run_once(self): return RunResult(sent=2)
+    monkeypatch.setattr(cli, "Pipeline", FakePipeline)
+    cli.cmd_run(config, once=True, dry_run=True)
+    assert "dry_run=True" in capsys.readouterr().out
+
+
+def test_dry_run_never_changes_delivery_history(monkeypatch, config):
+    """I-4: the documented "sends nothing" check must also *record* nothing, or the
+    posts it rendered are marked seen and never delivered for real."""
+    import pathlib
+    from tests.doubles import FakeSource, RecordingSink, tweet
+    from tweet_relay.pipeline import Pipeline
+    from tweet_relay.state import load_state
+    src = FakeSource([tweet(1, minutes=1)])
+    Pipeline(config, src, RecordingSink()).run_once()          # bootstrap
+    src.tweets.append(tweet(2, minutes=2))
+    before = pathlib.Path(config.STATE_PATH).read_bytes()
+    monkeypatch.setattr(cli, "NitterRssSource", lambda cfg: src)
+    assert cli.cmd_run(config, once=True, dry_run=True) == 0
+    assert pathlib.Path(config.STATE_PATH).read_bytes() == before
+    assert load_state(config.STATE_PATH, "santtiagom_").is_new(2)
+
+
+def test_dry_run_with_no_history_leaves_none_behind(monkeypatch, config):
+    import pathlib
+    from tests.doubles import FakeSource, tweet
+    monkeypatch.setattr(cli, "NitterRssSource", lambda cfg: FakeSource([tweet(1)]))
+    cli.cmd_run(config, once=True, dry_run=True)
+    assert not pathlib.Path(config.STATE_PATH).exists()

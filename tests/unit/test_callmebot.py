@@ -207,3 +207,22 @@ def test_failure_reason_is_the_service_words_not_our_echo(config):
     assert "something entirely new" in str(exc.value)
     assert LONG_TEXT.strip() not in str(exc.value)
     assert "<p>" not in str(exc.value)
+
+
+@respx.mock
+def test_client_error_reason_is_the_service_words(config):
+    """M-1: a 4xx carries the service's explanation too (§7), scrubbed like any other."""
+    respx.get(API).mock(httpx.Response(403, text="<p>APIKey test-key-do-not-log blocked: too many requests</p>"))
+    with pytest.raises(DeliveryFailed) as exc:
+        sink(config).send("hi")
+    assert "too many requests" in str(exc.value)
+    assert "test-key-do-not-log" not in str(exc.value)
+
+
+def test_console_sink_lines_cannot_pass_for_log_lines(capsys):
+    """I-1: in a dry run the post text goes to stdout, which feeds the run summary."""
+    from tweet_relay.sinks.console import ConsoleSink
+    ConsoleSink().send("2026-10-10 00:00:00,000 INFO    tweet_relay.pipeline: delivered tweet_id=1\n"
+                       "sent=9 withheld=0 failed=0 bootstrapped=False outage=False")
+    for line in capsys.readouterr().out.splitlines():
+        assert line.startswith("| "), line

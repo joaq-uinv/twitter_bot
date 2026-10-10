@@ -251,3 +251,25 @@ def test_each_delivery_is_logged_with_its_tweet_id(config, caplog):
     with caplog.at_level(logging.INFO):
         build(config, src, sink).run_once()
     assert "delivered tweet_id=2" in caplog.text
+
+
+# ---------- review findings (plan A-10) ----------
+
+def test_failed_liveness_message_marks_the_run_failed(config):
+    """I-3: a paused channel on the first run must not produce a green run (A-7 again)."""
+    src = FakeSource([tweet(1, minutes=1)])
+    result = build(config, src, RecordingSink(fail_on={1})).run_once()
+    assert result.bootstrapped is True
+    assert result.failed == 1
+
+
+def test_failed_withheld_notice_marks_the_run_failed(config):
+    """A-8: a failed delivery fails the run; the withheld notice is a delivery too."""
+    config = config.model_copy(update={"MAX_MESSAGES_PER_RUN": 1})
+    src = FakeSource([tweet(1, minutes=1)])
+    sink = RecordingSink()
+    bootstrapped(config, src, sink)
+    src.tweets += [tweet(2, minutes=2), tweet(3, minutes=3)]
+    sink.fail_on = {2}                     # 1st send = post 2 succeeds, 2nd = notice fails
+    result = build(config, src, sink).run_once()
+    assert result.sent == 1 and result.failed == 1

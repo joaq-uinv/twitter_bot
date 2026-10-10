@@ -110,3 +110,13 @@ def test_phone_number_never_reaches_the_failure_reason(config, status, body):
     with pytest.raises(DeliveryFailed) as exc:
         CallMeBotSink(config, pace_seconds=0, max_attempts=1).send("hi")
     assert [f for f in PHONE_FORMS if f in str(exc.value)] == []
+
+
+@respx.mock
+def test_phone_survives_an_echo_that_is_its_own_prefix(config):
+    """M-4: stripping an echo of "+34" before scrubbing would leave "600111222" intact
+    beside it, a form no scrub matches."""
+    respx.get(API).mock(httpx.Response(200, text=f"Message to: {PHONE} ERROR"))
+    with pytest.raises(DeliveryFailed) as exc:
+        CallMeBotSink(config, pace_seconds=0, max_attempts=1).send("+34")
+    assert "600111222" not in str(exc.value)
