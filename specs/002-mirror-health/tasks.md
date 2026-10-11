@@ -153,7 +153,7 @@ and the T001 fixtures. Each case raises `MirrorError` with exactly the reason gi
 
 ## Phase 4: Discovery and roster (R-1, DD-11) [P after T007]
 
-**T017 Test `StatusD420Directory`.** `tests/adversarial/test_directory.py`, respx
+**T017 Test `StatusD420Directory`.** ✅ 2026-10-11 `tests/adversarial/test_directory.py`, respx
 and the `d420_instances.json` fixture.
 - The real fixture yields 9 hosts.
 - These raise `DirectoryUnavailable`: a document over 1 MiB, non-JSON, a missing
@@ -164,11 +164,11 @@ and the `d420_instances.json` fixture.
 - Verify: RED.
 - Covers: FR-11, FR-12, FR-16, E-11.
 
-**T018 Implement `StatusD420Directory`.** `src/tweet_relay/mirrors/directory.py`
+**T018 Implement `StatusD420Directory`.** ✅ 2026-10-11 `src/tweet_relay/mirrors/directory.py`
 - Verify: GREEN (T017).
 - Covers: AC-5.1, FR-12.
 
-**T019 Test `build_roster`.** `tests/unit/test_roster.py`
+**T019 Test `build_roster`.** ✅ 2026-10-11 `tests/unit/test_roster.py`
 - In-use first. Then former (from history), then discovered.
 - De-duplicated. In-use hosts are never candidates.
 - Capped at 25, with former taking priority over discovered.
@@ -178,7 +178,7 @@ and the `d420_instances.json` fixture.
 - Verify: RED.
 - Covers: FR-13, FR-14, FR-15, AC-5.4, E-12, E-13, E-17, D-2.
 
-**T020 Implement `roster.build_roster`.** `src/tweet_relay/mirrors/roster.py`
+**T020 Implement `roster.build_roster`.** ✅ 2026-10-11 `src/tweet_relay/mirrors/roster.py`
 - Verify: GREEN (T019).
 - Covers: FR-13, FR-14.
 
