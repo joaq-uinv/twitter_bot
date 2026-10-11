@@ -1,0 +1,141 @@
+# Mirror health (spec 002). Probes every mirror read-only, keeps history on the
+# `mirror-status` branch, publishes the status page, and alerts.
+#
+# Exit codes of `probe-mirrors` (plan DD-6):
+#   0 ok          -> Healthchecks success ping; run passes
+#   3 at risk     -> Healthchecks /fail (state change: once per episode); run FAILS
+#                    every at-risk round, so GitHub's failure email repeats (D-3)
+#   1/2 broken    -> no Healthchecks ping (its 24 h grace reports a stopped check,
+#                    DD-7, D-1); run FAILS, so GitHub emails at once
+name: Mirror health
+
+"on":
+  schedule:
+    - cron: "17 */6 * * *"     # ~6 h, offset from the relay's */15 (plan Technical Context)
+  workflow_dispatch:
+
+permissions:
+  contents: write              # force-push the mirror-status branch
+  issues: write                # soft warnings (DD-8)
+  pages: write                 # deploy the status page
+  id-token: write              # required by deploy-pages
+
+concurrency:
+  group: mirror-probe          # E-19: rounds never overlap
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15        # DD-12: 25 sequential probes x 15 s fits
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      HC_PING_URL: ${{ secrets.HEALTHCHECKS_MIRRORS_PING_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # History lives on its own orphan branch, one commit (plan DD-5). Missing on the
+      # first run: start empty.
+      - name: Restore mirror history
+        run: |
+          mkdir -p state/mirror-data state/mirror-site
+          if git fetch --depth=1 origin mirror-status 2>/dev/null; then
+            git archive FETCH_HEAD | tar -x -C state/mirror-data
+          else
+            echo "No mirror-status branch yet; starting a fresh history."
+          fi
+
+      # The probe needs no delivery credentials (FR-19): only the account to probe.
+      - name: Write run configuration
+        run: |
+          {
+            echo "X_PROFILE_URL=https://x.com/santtiagom_"
+            echo "STATE_PATH=/data/seen.json"
+            echo "HOST_UID=$(id -u)"
+            echo "HOST_GID=$(id -g)"
+          } > .env
+
+      - name: Build image
+        run: docker compose --progress=plain build
+
+      - name: Probe mirrors
+        id: probe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          docker compose run --rm -T -e GITHUB_TOKEN -e GITHUB_REPOSITORY relay \
+            probe-mirrors --data /data/mirror-data --site-out /data/mirror-site 2>&1 | tee probe.log
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      # Saved whatever the verdict: an at-risk round is still history (FR-1).
+      - name: Persist mirror history
+        if: ${{ always() && hashFiles('state/mirror-data/history.jsonl') != '' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          export GIT_INDEX_FILE="$RUNNER_TEMP/mirror-status.index"
+          git --work-tree=state/mirror-data add -f history.jsonl latest.json
+          tree=$(git write-tree)
+          commit=$(git commit-tree "$tree" -m "mirror status: $RUN_URL")
+          git push -f origin "$commit:refs/heads/mirror-status"
+
+      # The page is published even when at risk: it must show the risk (US-3).
+      - name: Upload status page
+        if: ${{ always() && hashFiles('state/mirror-site/index.html') != '' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: state/mirror-site
+
+      - name: Deploy status page
+        id: deploy
+        if: ${{ always() && hashFiles('state/mirror-site/index.html') != '' }}
+        uses: actions/deploy-pages@v4
+
+      # AC-1.7: the summary states which of the two failure causes applies.
+      - name: Write job summary
+        if: ${{ always() }}
+        env:
+          CODE: ${{ steps.probe.outputs.code }}
+        run: |
+          case "$CODE" in
+            0) head="✅ mirrors: ok" ;;
+            3) head="⚠️ mirrors: AT RISK (fewer than 2 in-use mirrors healthy)" ;;
+            *) head="❌ mirrors: check broken (exit ${CODE:-none}); the probe itself failed" ;;
+          esac
+          {
+            echo "## $head"; echo
+            echo "Run: $RUN_URL"; echo
+            echo '<pre>'
+            touch probe.log
+            grep -E '^(in_use |[0-9]+ of [0-9]+|warning tracker|cause=)' probe.log | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
+            echo '</pre>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report to Healthchecks
+        if: ${{ always() && env.HC_PING_URL != '' }}
+        env:
+          CODE: ${{ steps.probe.outputs.code }}
+        run: |
+          case "$CODE" in
+            0) suffix="" ;;
+            3) suffix="/fail" ;;
+            *) echo "Check broken: no ping (the grace period reports a stopped check)."; exit 0 ;;
+          esac
+          { echo "Run: $RUN_URL"; grep -E '^(in_use |[0-9]+ of [0-9]+|cause=)' probe.log; } \
+            | curl -fsS -m 10 --retry 3 -o /dev/null --data-binary @- "$HC_PING_URL$suffix" \
+            || echo "::warning::Healthchecks ping failed"
+
+      - name: Fail the run unless ok
+        if: ${{ always() }}
+        env:
+          CODE: ${{ steps.probe.outputs.code }}
+        run: |
+          case "$CODE" in
+            0) exit 0 ;;
+            3) echo "::error title=Mirrors at risk::Fewer than 2 in-use mirrors are healthy. See the status page."; exit 1 ;;
+            *) echo "::error title=Mirror check broken::probe-mirrors exited ${CODE:-without running}."; exit 1 ;;
+          esac

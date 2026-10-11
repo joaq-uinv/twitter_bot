@@ -168,6 +168,9 @@ def cmd_probe_mirrors(config: Config, data: str, site_out: str) -> int:
     site = Path(site_out)
     site.mkdir(parents=True, exist_ok=True)
     (site / "status.json").write_text(json.dumps(out.status, indent=2) + "\n", encoding="utf-8")
+    # P-1: the page ships in the package; one directory holds page + data for Pages.
+    for asset in ("index.html", "app.js", "style.css"):
+        shutil.copyfile(Path(__file__).parent / "site" / asset, site / asset)
 
     v = out.verdict
     print(f"{v.in_use_healthy} of {v.in_use_total} in-use mirrors healthy")

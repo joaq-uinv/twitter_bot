@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Mirror status · tweet-relay</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>Mirror status</h1>
+    <p class="sub">Sources the relay reads posts from, probed about every 6 hours.</p>
+  </header>
+  <main>
+    <section id="stale" class="banner stale" hidden></section>
+    <section id="verdict" class="banner">Loading…</section>
+
+    <section aria-labelledby="h-inuse">
+      <h2 id="h-inuse">In use</h2>
+      <div class="scroll"><table id="inuse"></table></div>
+    </section>
+
+    <section id="warnings-section" aria-labelledby="h-warn" hidden>
+      <h2 id="h-warn">Open warnings</h2>
+      <ul id="warnings"></ul>
+      <p><a id="issues-link" hidden>All mirror-health issues</a></p>
+    </section>
+
+    <section aria-labelledby="h-cand">
+      <h2 id="h-cand">Replacement candidates</h2>
+      <p class="sub">Never used automatically: add one to the relay's configuration to use it.</p>
+      <div class="scroll"><table id="candidates"></table></div>
+    </section>
+
+    <section aria-labelledby="h-disc">
+      <h2 id="h-disc">Discovery</h2>
+      <p id="discovery"></p>
+    </section>
+  </main>
+  <footer><p id="generated"></p></footer>
+</body>
+</html>

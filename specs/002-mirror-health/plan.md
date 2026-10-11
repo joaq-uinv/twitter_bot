@@ -127,3 +127,12 @@ R-2 found the relay at exactly 2 healthy in-use mirrors today. Replacing
 `nitter.pp.ua` in `NITTER_INSTANCES` would restore headroom immediately. It is a
 configuration change, so it does not have to wait for this feature, but it is the
 operator's call.
+
+
+## Amendment P-1: the page ships inside the package (2026-10-11, during T032)
+
+DD-9 placed the page source at `main/site/`. The test container mounts only `src/`
+and `tests/`, so T032's static checks could not read it. The page now lives at
+`src/tweet_relay/site/` and is part of the tested image. `probe-mirrors --site-out`
+writes the **complete** site: the three static files plus `status.json`. So the
+workflow uploads one directory instead of merging two. Nothing else in DD-9 changes.

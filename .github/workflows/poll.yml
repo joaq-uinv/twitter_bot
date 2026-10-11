@@ -72,7 +72,7 @@ jobs:
       - name: Build image
         run: |
           set -o pipefail
-          docker compose build --progress=plain 2>&1 | tee -a run.log
+          docker compose --progress=plain build 2>&1 | tee -a run.log
 
       - name: Run one check (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run

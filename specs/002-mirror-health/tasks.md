@@ -272,7 +272,7 @@ REST API faked by respx.
 
 ## Phase 8: Status page (DD-9) [P after T024 fixes the `status.json` shape]
 
-**T032 Test the static safety checks.** `tests/unit/test_site_static.py`
+**T032 Test the static safety checks.** ✅ 2026-10-11 `tests/unit/test_site_static.py` (site moved to `src/tweet_relay/site/`, plan amendment P-1)
 - `site/app.js` contains none of `innerHTML`, `outerHTML`, `insertAdjacentHTML`,
   `document.write`, `eval(`, `new Function`.
 - `site/index.html` has `<meta http-equiv="Content-Security-Policy"` with
@@ -280,7 +280,7 @@ REST API faked by respx.
 - Verify: RED (`site/` is missing).
 - Covers: FR-17, E-14.
 
-**T033 Implement `site/index.html`, `site/app.js` and `site/style.css`.**
+**T033 Implement `src/tweet_relay/site/{index.html,app.js,style.css}`** ✅ 2026-10-11 (P-1), copied into `--site-out` by `probe-mirrors`.
 - Banner (AC-3.1). In-use table (AC-3.2). Warnings with issue links (AC-3.4).
 - Trend (AC-4.2). Candidates (AC-5.2). Discovery block (AC-5.3).
 - **A stale-data banner when `generated_at` is more than 12 h old, judged in the
@@ -289,7 +289,7 @@ REST API faked by respx.
 - Verify: GREEN (T032).
 - Covers: the listed ACs.
 
-**T034 Manual check of the page.** quickstart step 4.
+**T034 Manual check of the page.** ✅ 2026-10-11 quickstart step 4.
 - Desktop and a 390 px viewport. The stale banner appears after editing
   `generated_at`.
 - Record the result with the date at the bottom of this file.
@@ -297,7 +297,7 @@ REST API faked by respx.
 
 ## Phase 9: Workflow and go-live (DD-5, DD-6, DD-7)
 
-**T035 Write `.github/workflows/mirrors.yml`.**
+**T035 Write `.github/workflows/mirrors.yml`.** ✅ 2026-10-11
 - `cron: "17 */6 * * *"` plus `workflow_dispatch`.
 - `concurrency: mirror-probe`, with no cancel-in-progress (E-19).
 - Permissions: `contents: write`, `issues: write`, `pages: write`, `id-token: write`.
@@ -322,7 +322,7 @@ REST API faked by respx.
   `build_type: workflow`, and `gh secret list` shows the secret.
 - Covers: FR-8, FR-9 (D-1), FR-19.
 
-**T037 Run the local probe against real mirrors** (quickstart step 3).
+**T037 Run the local probe against real mirrors** ✅ 2026-10-11 (quickstart step 3).
 - Verify: exit `0` or `3`; one result per roster host; every unhealthy result has a
   reason label; `status.json` contains no response text (spot check plus T029).
 - Covers: AC-5.1, FR-3, FR-16.
@@ -400,6 +400,24 @@ Every FR-1..19, AC-1.1..5.4 and E-1..22 maps to at least one task.
 
 *(T034, T037 and T039 record their results here, with dates.)*
 
+- 2026-10-11, T037 (local live probe, read-only): exit 0 (`cause=ok`), 31 s.
+  3 of 4 in-use healthy: `kareem.one` refused_answer (8.6 s); `pp.ua`,
+  `thepixora` and `meowing` healthy. 5 candidates discovered (9 accepted, 0
+  rejected), all unhealthy: click and netbub sent_elsewhere, jaydenha
+  malformed_content, tiekoetter and xitter refused_answer. `status.json`
+  contains only hosts, labels, times and numbers (scripted check). **Follow-up
+  for review:** the relay logs a feed-supplied link hostname at WARNING
+  ("link host … differs from mirror …"), 18 times per probe of `thepixora`.
+  That is a third-party string in the public Actions log (FR-16 spirit) and
+  log noise. It is existing 001 code.
+- 2026-10-11, T034 (headless Chrome, real `status.json`): desktop 1280 px
+  renders the verdict, both tables, the trend and discovery. Phone 390 px hides
+  the newest-post and 7 d columns; the tables scroll sideways, which is
+  readable. Data aged 13 h shows "⚠️ This data is 13 h old. The health check may
+  have stopped." above the verdict (AC-3.3, judged at view time).
+- 2026-10-11, T035: `mirrors.yml` lints clean. The history-commit plumbing
+  (GIT_INDEX_FILE + write-tree + commit-tree) was simulated in a throwaway
+  clone: one root commit with exactly history.jsonl and latest.json.
 - 2026-10-11, Phase 6: T029 mutation-checked. A mutant logging raw list entries at INFO
   made it fail, with markers 6–9 found in the public log; the mutant was reverted.
   `probe-mirrors` uses `NullTracker` until T031 wires in the GitHub tracker.
