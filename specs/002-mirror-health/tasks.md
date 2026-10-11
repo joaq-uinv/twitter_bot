@@ -70,7 +70,7 @@ and the T001 fixtures. Each case raises `MirrorError` with exactly the reason gi
 
 ## Phase 2: Strict validator and the probe (DD-3, DD-4)
 
-**T006 Test `validate_mirror_url`.** `tests/adversarial/test_mirror_url.py`
+**T006 Test `validate_mirror_url`.** ✅ 2026-10-11 `tests/adversarial/test_mirror_url.py`
 - Rejects:
   - `http://`
   - userinfo, a port, a path, a query or a fragment
@@ -83,20 +83,20 @@ and the T001 fixtures. Each case raises `MirrorError` with exactly the reason gi
 - Verify: RED with `ImportError`.
 - Covers: FR-11, E-10.
 
-**T007 Implement `validate_mirror_url`.** `src/tweet_relay/config.py`
+**T007 Implement `validate_mirror_url`.** ✅ 2026-10-11 `src/tweet_relay/config.py`
 - `_validate_instance` delegates to it (plan DD-3 tightens 001 E-20).
 - Verify: GREEN (T006), and `PT tests/adversarial/test_ssrf.py tests/unit/test_config.py`
   stays green.
 - Covers: FR-11.
 
-**T008 Test the probe-time address refusal.** `tests/adversarial/test_probe_address.py`
+**T008 Test the probe-time address refusal.** ✅ 2026-10-11 `tests/adversarial/test_probe_address.py`
 - A resolver returning a private, loopback, link-local or CGNAT address gives
   `ProbeOutcome(usable=False, reason=REFUSED_ADDRESS, ms=None)`.
 - The respx route records **0 calls**.
 - Verify: RED with `ImportError: HttpMirrorProbe`.
 - Covers: FR-11, E-10.
 
-**T009 Test the probe's outcome mapping.** `tests/unit/test_mirror_probe.py`
+**T009 Test the probe's outcome mapping.** ✅ 2026-10-11 `tests/unit/test_mirror_probe.py`
 - Each `MirrorError` reason from T004 maps to its outcome, and `[]` maps to `no_posts`.
 - `ms` is measured with an injected clock.
 - `newest` ignores posts dated more than 5 minutes in the future.
@@ -104,7 +104,7 @@ and the T001 fixtures. Each case raises `MirrorError` with exactly the reason gi
 - Verify: RED.
 - Covers: FR-3, FR-6, E-2, AC-1.7.
 
-**T010 Implement `HttpMirrorProbe`.** `src/tweet_relay/mirrors/probe.py`
+**T010 Implement `HttpMirrorProbe`.** ✅ 2026-10-11 `src/tweet_relay/mirrors/probe.py`
 - Verify: GREEN (T008, T009).
 - Covers: FR-1, FR-2, FR-3, FR-11.
 
