@@ -19,7 +19,7 @@ dependency is met.
 
 ## Phase 1: Shared fetch and reason labels (DD-1, DD-2)
 
-**T001 Capture fixtures from research R-2.**
+**T001 Capture fixtures from research R-2.** ✅ 2026-10-11
 - Files: `tests/fixtures/mirrors/feed_pp_ua.xml` (a valid feed),
   `access_queue_jaydenha.html` (200 + HTML), `forbidden_tiekoetter.html` (403 body),
   `d420_instances.json` (the list, R-1).
@@ -29,7 +29,7 @@ dependency is met.
   `grep -rlE "CALLMEBOT|apikey" tests/fixtures/mirrors` gives nothing.
 - Covers: FR-3, E-6 (fixtures for §5).
 
-**T002 Test the closed sets.** `tests/unit/test_mirror_models.py`
+**T002 Test the closed sets.** ✅ 2026-10-11 `tests/unit/test_mirror_models.py`
 - `Reason` has exactly the 10 values in data-model.md, and `Role` and `Freshness`
   are exact.
 - `ProbeOutcome` and `ProbeResult` have no `str` field except `host`, which is a
@@ -39,11 +39,11 @@ dependency is met.
 - Verify: RED with `ModuleNotFoundError: tweet_relay.mirrors`.
 - Covers: FR-5, FR-6, FR-16.
 
-**T003 Implement the models.** `src/tweet_relay/mirrors/__init__.py`, `mirrors/models.py`
+**T003 Implement the models.** ✅ 2026-10-11 `src/tweet_relay/mirrors/__init__.py`, `mirrors/models.py`
 - Verify: GREEN (T002).
 - Covers: FR-5, FR-6.
 
-**T004 Test `fetch_one` classification.** `tests/unit/test_fetch_one.py`, using respx
+**T004 Test `fetch_one` classification.** ✅ 2026-10-11 `tests/unit/test_fetch_one.py`, using respx
 and the T001 fixtures. Each case raises `MirrorError` with exactly the reason given:
 - timeout → `timed_out`
 - `ConnectError` → `unreachable`
@@ -52,14 +52,16 @@ and the T001 fixtures. Each case raises `MirrorError` with exactly the reason gi
 - oversized (both the declared and the streamed size) → `too_large`
 - access-queue HTML → `malformed_content`
 - a feed for a different account → `wrong_account`
-- a feed with 0 valid items → `no_posts`
+- a feed with 0 valid items **returns `[]`** (amended 2026-10-11: the relay's
+  source contract guarantee 3 treats an empty feed as a quiet account, not a
+  failure, so the **probe** maps `[]` to `no_posts` in T009 instead)
 - a valid feed returns tweets
 
 `MirrorError` must be an instance of `SourceUnavailable`.
 - Verify: RED with `ImportError: fetch_one`.
 - Covers: FR-3, FR-5, E-5 to E-9.
 
-**T005 Extract `fetch_one` and `MirrorError`.** `src/tweet_relay/sources/nitter_rss.py`
+**T005 Extract `fetch_one` and `MirrorError`.** ✅ 2026-10-11 `src/tweet_relay/sources/nitter_rss.py`
 - `NitterRssSource.fetch` loops over `fetch_one`. Its log lines and its
   `SourceUnavailable` message stay unchanged for the relay.
 - Verify: GREEN (T004), and `PT tests/unit/test_nitter_rss.py tests/adversarial`
@@ -95,7 +97,7 @@ and the T001 fixtures. Each case raises `MirrorError` with exactly the reason gi
 - Covers: FR-11, E-10.
 
 **T009 Test the probe's outcome mapping.** `tests/unit/test_mirror_probe.py`
-- Each `MirrorError` reason from T004 maps to its outcome.
+- Each `MirrorError` reason from T004 maps to its outcome, and `[]` maps to `no_posts`.
 - `ms` is measured with an injected clock.
 - `newest` ignores posts dated more than 5 minutes in the future.
 - Any non-`MirrorError` exception propagates (contract 2: check broken).
@@ -396,3 +398,10 @@ Every FR-1..19, AC-1.1..5.4 and E-1..22 maps to at least one task.
 ## Manual verification log
 
 *(T034, T037 and T039 record their results here, with dates.)*
+
+- 2026-10-11, Phase 1: full suite 376 passed. Live mirror tests (`-m live -k pinned_mirror`)
+  pass for all 4 `DEFAULT_INSTANCES` through the refactored `fetch_one`.
+  **Follow-up found:** `test_real_whatsapp_delivery` always errors at `Config()`,
+  because the isolation fixture strips the required `X_PROFILE_URL`. It never skips.
+  Nothing was sent, but if the isolation changed, any `-m live` run would send a real
+  message. Fix it to skip unless explicitly opted in.

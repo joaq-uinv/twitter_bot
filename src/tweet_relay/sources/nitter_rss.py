@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 import httpx
 from defusedxml import ElementTree as DefusedET
 
+from ..mirrors.models import Reason
 from ..models import HANDLE_RE, SourceUnavailable, Tweet, TweetKind
 
 log = logging.getLogger(__name__)
@@ -23,6 +24,24 @@ RT_PREFIX = re.compile(r"^RT by @([A-Za-z0-9_]{1,15}):\s*", re.I)
 REPLY_PREFIX = re.compile(r"^R to @([A-Za-z0-9_]{1,15}):\s*", re.I)
 STATUS_PATH = re.compile(r"^/([A-Za-z0-9_]{1,15})/status/(\d{1,19})$")
 MAX_FUTURE = timedelta(hours=24)
+USER_AGENT = "tweet-relay/0.1 (+personal notification relay)"
+
+# Failures that are about reaching the mirror rather than what it answered. The
+# relay logs these as "mirror failed", the rest as "mirror unusable".
+_TRANSPORT_REASONS = frozenset({Reason.TIMED_OUT, Reason.UNREACHABLE,
+                                Reason.REFUSED_ANSWER, Reason.SENT_ELSEWHERE})
+
+
+class MirrorError(SourceUnavailable):
+    """One mirror could not supply the account's posts, and why (spec 002 FR-5).
+
+    A SourceUnavailable, so the relay's existing handling is unchanged. The message
+    is for local logs only; `reason` is what gets published.
+    """
+
+    def __init__(self, reason: Reason, message: str):
+        super().__init__(message)
+        self.reason = reason
 
 
 def _classify(title: str, link_author: str, handle: str, description: str) -> TweetKind:
@@ -97,16 +116,19 @@ def parse_feed(raw: bytes, handle: str, expected_host: str | None = None) -> lis
     try:
         root = DefusedET.fromstring(raw)
     except Exception as exc:
-        raise SourceUnavailable(f"unparseable feed: {type(exc).__name__}") from None
+        raise MirrorError(Reason.MALFORMED_CONTENT,
+                          f"unparseable feed: {type(exc).__name__}") from None
 
     channel = root.find("channel")
     if channel is None:
-        raise SourceUnavailable("not a syndication feed: no channel element")
+        raise MirrorError(Reason.MALFORMED_CONTENT,
+                          "not a syndication feed: no channel element")
 
     # FR-7/E-7: confirm this describes the account we asked about.
     title = (channel.findtext("title") or "")
     if not re.search(rf"@{re.escape(handle)}\b", title, re.I):
-        raise SourceUnavailable(
+        raise MirrorError(
+            Reason.WRONG_ACCOUNT,
             f"feed identifies a different account: {title[:80]!r} (wanted @{handle})")
 
     tweets: list[Tweet] = []
@@ -152,6 +174,50 @@ def parse_feed(raw: bytes, handle: str, expected_host: str | None = None) -> lis
     return tweets
 
 
+def _get(client: httpx.Client, url: str, limit: int) -> bytes:
+    # Streamed so an oversized body is abandoned mid-download rather than buffered in
+    # full and then rejected (E-9).
+    with client.stream("GET", url) as response:
+        response.raise_for_status()
+        declared = response.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > limit:
+            raise MirrorError(Reason.TOO_LARGE, f"response declares {declared} bytes, over cap")
+        chunks, total = [], 0
+        for chunk in response.iter_bytes():
+            total += len(chunk)
+            if total > limit:
+                raise MirrorError(Reason.TOO_LARGE, f"response exceeded {limit} bytes")
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def fetch_one(client: httpx.Client, base: str, handle: str, config) -> list[Tweet]:
+    """Fetch and parse one mirror's feed for `handle` (spec 002 plan DD-1).
+
+    Shared by the relay and the mirror probe, so a mirror the probe calls usable is
+    exactly one the relay would accept. Raises MirrorError with one Reason; returns []
+    for a feed with no posts, which the relay treats as a quiet account (contract
+    guarantee 3) and the probe labels `no_posts`. The client must not follow
+    redirects (§4).
+    """
+    url = f"{base.rstrip('/')}/{handle}/rss"
+    try:
+        body = _get(client, url, config.MAX_FEED_BYTES)
+    except httpx.TimeoutException as exc:
+        raise MirrorError(Reason.TIMED_OUT, type(exc).__name__) from None
+    except httpx.HTTPStatusError as exc:
+        code = exc.response.status_code
+        reason = Reason.SENT_ELSEWHERE if 300 <= code < 400 else Reason.REFUSED_ANSWER
+        raise MirrorError(reason, type(exc).__name__) from None
+    except httpx.HTTPError as exc:
+        raise MirrorError(Reason.UNREACHABLE, type(exc).__name__) from None
+    if not body.strip():
+        raise MirrorError(Reason.MALFORMED_CONTENT, "empty body")
+    tweets = parse_feed(body, handle, expected_host=urlparse(base).hostname)
+    log.info("fetched %d posts from %s", len(tweets), base)
+    return tweets
+
+
 class NitterRssSource:
     """Tries each configured mirror in order; the first usable answer wins.
 
@@ -165,23 +231,6 @@ class NitterRssSource:
         self.config = config
         self._client = client
 
-    def _get(self, client: httpx.Client, url: str) -> bytes:
-        limit = self.config.MAX_FEED_BYTES
-        # Streamed so an oversized body is abandoned mid-download rather than
-        # buffered in full and then rejected (E-9).
-        with client.stream("GET", url) as response:
-            response.raise_for_status()
-            declared = response.headers.get("content-length")
-            if declared and declared.isdigit() and int(declared) > limit:
-                raise SourceUnavailable(f"response declares {declared} bytes, over cap")
-            chunks, total = [], 0
-            for chunk in response.iter_bytes():
-                total += len(chunk)
-                if total > limit:
-                    raise SourceUnavailable(f"response exceeded {limit} bytes")
-                chunks.append(chunk)
-        return b"".join(chunks)
-
     def fetch(self, handle: str) -> list[Tweet]:
         if not HANDLE_RE.match(handle or ""):
             raise SourceUnavailable(f"refusing to fetch malformed handle {handle!r}")
@@ -191,26 +240,17 @@ class NitterRssSource:
             # follow_redirects=False: a mirror redirecting us elsewhere is a mirror we
             # should stop trusting, not follow (§4).
             follow_redirects=False,
-            headers={"User-Agent": "tweet-relay/0.1 (+personal notification relay)"},
+            headers={"User-Agent": USER_AGENT},
         )
         failures: list[str] = []
         try:
             for base in self.config.instances:
-                url = f"{base.rstrip('/')}/{handle}/rss"
                 try:
-                    body = self._get(client, url)
-                    if not body.strip():
-                        raise SourceUnavailable("empty body")
-                    tweets = parse_feed(body, handle,
-                                        expected_host=urlparse(base).hostname)
-                    log.info("fetched %d posts from %s", len(tweets), base)
-                    return tweets
-                except SourceUnavailable as exc:
+                    return fetch_one(client, base, handle, self.config)
+                except MirrorError as exc:
                     failures.append(f"{base}: {exc}")
-                    log.warning("mirror unusable %s: %s", base, exc)
-                except httpx.HTTPError as exc:
-                    failures.append(f"{base}: {type(exc).__name__}")
-                    log.warning("mirror failed %s: %s", base, type(exc).__name__)
+                    verb = "failed" if exc.reason in _TRANSPORT_REASONS else "unusable"
+                    log.warning("mirror %s %s: %s", verb, base, exc)
         finally:
             if self._client is None:
                 client.close()
