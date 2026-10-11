@@ -110,7 +110,7 @@ and the T001 fixtures. Each case raises `MirrorError` with exactly the reason gi
 
 ## Phase 3: Health core, pure functions (DD-10) [P after T003]
 
-**T011 Test freshness.** `tests/unit/test_health.py`
+**T011 Test freshness.** ✅ 2026-10-11 `tests/unit/test_health.py`
 - The reference is the newest in-use `newest`.
 - Stale when the newest post is more than 6 h behind the reference.
 - `unknown` when no in-use result is usable.
@@ -119,11 +119,11 @@ and the T001 fixtures. Each case raises `MirrorError` with exactly the reason gi
 - Verify: RED.
 - Covers: FR-4, E-1, E-2, E-3, E-4.
 
-**T012 Implement `health.evaluate_round`.** `src/tweet_relay/mirrors/health.py`
+**T012 Implement `health.evaluate_round`.** ✅ 2026-10-11 `src/tweet_relay/mirrors/health.py`
 - Verify: GREEN (T011).
 - Covers: FR-4, FR-6, D-4 (`healthy = usable ∧ freshness ∈ {fresh, unknown}`).
 
-**T013 Test the urgent verdict and episodes.** `tests/unit/test_health.py`
+**T013 Test the urgent verdict and episodes.** ✅ 2026-10-11 `tests/unit/test_health.py`
 - `at_risk` exactly when in-use healthy < 2, including the boundary at 2.
 - `in_use_total < 2` is always at risk (E-18).
 - `at_risk_since` is set on the first at-risk round, kept while the risk lasts, and
@@ -132,21 +132,22 @@ and the T001 fixtures. Each case raises `MirrorError` with exactly the reason gi
 - Verify: RED.
 - Covers: FR-7, AC-1.1, AC-1.2, AC-1.3, AC-1.6, E-18.
 
-**T014 Implement the verdict and `EpisodeState` transitions.** `mirrors/health.py`
+**T014 Implement the verdict and `EpisodeState` transitions.** ✅ 2026-10-11 `mirrors/health.py`
 - Verify: GREEN (T013).
 - Covers: FR-7, AC-1.6.
 
-**T015 Test the soft-warning rule.** `tests/unit/test_health.py`
+**T015 Test the soft-warning rule.** ✅ 2026-10-11 `tests/unit/test_health.py`
 - Opens when **every** result in 24 h is unhealthy **and** there are at least 2.
 - A host unhealthy for 23 h with one healthy result gives no warning.
 - An open warning stays a single warning.
-- Closes on the first healthy result.
+- Closes on the first healthy result, and **only** then (or when no longer in use): a thin
+  window caused by delayed rounds never closes a warning (found while writing T015).
 - Candidates and former hosts never open a warning; a former host's warning closes.
 - A flapping host (alternating) never opens one.
 - Verify: RED.
 - Covers: AC-2.1 to AC-2.5, FR-10, E-15, E-16, E-17.
 
-**T016 Implement `health.desired_warnings`.** `mirrors/health.py`
+**T016 Implement `health.plan_warnings`.** ✅ 2026-10-11 (renamed from `desired_warnings`: it returns an open/update/close plan) `mirrors/health.py`
 - Verify: GREEN (T015).
 - Covers: FR-10.
 
