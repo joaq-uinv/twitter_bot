@@ -255,7 +255,7 @@ Depends on T010, T014, T016, T018, T020, T022 and T024.
 
 ## Phase 7: Warning tracker (DD-8) [P after T003]
 
-**T030 Test `GitHubIssueTracker`.** `tests/unit/test_tracker.py`, with the GitHub
+**T030 Test `GitHubIssueTracker`.** ✅ 2026-10-11 `tests/unit/test_tracker.py`, with the GitHub
 REST API faked by respx.
 - `open` creates an issue with label `mirror-health` and the exact title.
 - `open` on an existing open issue makes no request.
@@ -266,7 +266,7 @@ REST API faked by respx.
 - Verify: RED.
 - Covers: FR-10, AC-2.3, AC-2.4, §6.
 
-**T031 Implement `GitHubIssueTracker`.** `src/tweet_relay/mirrors/tracker.py`
+**T031 Implement `GitHubIssueTracker`.** ✅ 2026-10-11 `src/tweet_relay/mirrors/tracker.py`
 - Verify: GREEN (T030).
 - Covers: FR-10.
 

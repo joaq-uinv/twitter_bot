@@ -16,7 +16,7 @@ from .mirrors.directory import StatusD420Directory
 from .mirrors.history import DirHistoryStore
 from .mirrors.probe import HttpMirrorProbe
 from .mirrors.round import run_round
-from .mirrors.tracker import NullTracker
+from .mirrors.tracker import GitHubIssueTracker, NullTracker
 from .models import DeliveryFailed, SourceUnavailable
 from .pipeline import Pipeline
 from .sinks.callmebot import CallMeBotSink
@@ -135,8 +135,11 @@ def _run(config: Config, once: bool, dry_run: bool) -> int:
 
 
 def _warning_tracker():
-    """Where soft warnings go (spec 002 FR-10). Phase 7 adds the GitHub tracker; until
-    then, and in local runs without credentials, warnings are not tracked."""
+    """Where soft warnings go (spec 002 FR-10, DD-8): GitHub issues in Actions, where
+    GITHUB_TOKEN and GITHUB_REPOSITORY exist; nowhere in local runs, and it says so."""
+    token, repo = os.environ.get("GITHUB_TOKEN"), os.environ.get("GITHUB_REPOSITORY")
+    if token and repo:
+        return GitHubIssueTracker(token=token, repo=repo)
     log.info("no warning tracker configured; soft warnings are not tracked in this run")
     return NullTracker()
 
