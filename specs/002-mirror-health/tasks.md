@@ -215,7 +215,7 @@ and the `d420_instances.json` fixture.
 
 Depends on T010, T014, T016, T018, T020, T022 and T024.
 
-**T025 Test `run_round`.** `tests/unit/test_round.py`, wired with
+**T025 Test `run_round`.** ✅ 2026-10-11 `tests/unit/test_round.py`, wired with
 `FixtureMirrorProbe`, `StaticDirectory`, `MemoryHistoryStore` and `FakeTracker`.
 - Probes run sequentially, one per roster host.
 - History is appended and `latest.json` updated.
@@ -227,11 +227,11 @@ Depends on T010, T014, T016, T018, T020, T022 and T024.
 - Verify: RED.
 - Covers: FR-1, FR-2, FR-10, AC-2.3, AC-2.4, AC-5.1, contract warning-tracker 3.
 
-**T026 Implement `mirrors/round.py:run_round`.**
+**T026 Implement `mirrors/round.py:run_round`.** ✅ 2026-10-11
 - Verify: GREEN (T025).
 - Covers: FR-1, FR-2.
 
-**T027 Test the `probe-mirrors` CLI.** `tests/unit/test_cli.py`
+**T027 Test the `probe-mirrors` CLI.** ✅ 2026-10-11 `tests/unit/test_cli.py`
 - Exit `0` when ok, `3` when at risk, `1` on an unexpected exception or tracker
   failure, `2` on bad arguments.
 - Stdout has a final `cause=ok|at_risk|check_broken` line.
@@ -240,12 +240,12 @@ Depends on T010, T014, T016, T018, T020, T022 and T024.
 - Verify: RED.
 - Covers: AC-1.1, AC-1.7, FR-7, FR-19.
 
-**T028 Implement the `probe-mirrors` subcommand.** `src/tweet_relay/cli.py`
+**T028 Implement the `probe-mirrors` subcommand.** ✅ 2026-10-11 `src/tweet_relay/cli.py`
 - Flags `--data` and `--site-out`. Writes `status.json` into `--site-out`.
 - Verify: GREEN (T027).
 - Covers: FR-7, AC-1.7.
 
-**T029 Test: nothing third-party is published.** `tests/adversarial/test_no_third_party_text.py`
+**T029 Test: nothing third-party is published.** ✅ 2026-10-11 `tests/adversarial/test_no_third_party_text.py`
 - Every fixture body, list entry field and error message is seeded with a unique
   marker, e.g. `ZZ-MARKER-<n>`.
 - After a full `run_round`, no marker appears in `history.jsonl`, `latest.json`,
@@ -400,6 +400,9 @@ Every FR-1..19, AC-1.1..5.4 and E-1..22 maps to at least one task.
 
 *(T034, T037 and T039 record their results here, with dates.)*
 
+- 2026-10-11, Phase 6: T029 mutation-checked. A mutant logging raw list entries at INFO
+  made it fail, with markers 6–9 found in the public log; the mutant was reverted.
+  `probe-mirrors` uses `NullTracker` until T031 wires in the GitHub tracker.
 - 2026-10-11, Phase 1: full suite 376 passed. Live mirror tests (`-m live -k pinned_mirror`)
   pass for all 4 `DEFAULT_INSTANCES` through the refactored `fetch_one`.
   **Follow-up found:** `test_real_whatsapp_delivery` always errors at `Config()`,

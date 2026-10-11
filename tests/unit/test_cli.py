@@ -117,3 +117,74 @@ def test_dry_run_with_no_history_leaves_none_behind(monkeypatch, config):
     monkeypatch.setattr(cli, "NitterRssSource", lambda cfg: FakeSource([tweet(1)]))
     cli.cmd_run(config, once=True, dry_run=True)
     assert not pathlib.Path(config.STATE_PATH).exists()
+
+
+# --- probe-mirrors (spec 002 AC-1.1, AC-1.7, FR-7, FR-19; plan DD-6) ---
+
+def _probe_env(monkeypatch, tmp_path, outcomes, tracker=None):
+    import json, socket
+    from datetime import datetime, timedelta, timezone
+    from tests.doubles import FakeTracker, FixtureMirrorProbe, StaticDirectory
+    from tweet_relay import config as config_module
+    from tweet_relay.mirrors.directory import DirectoryRead
+    monkeypatch.setenv("X_PROFILE_URL", "@santtiagom_")
+    monkeypatch.setenv("NITTER_INSTANCES", "https://a.example,https://b.example")
+    monkeypatch.setattr(config_module.socket, "getaddrinfo",
+                        lambda *a, **k: (_ for _ in ()).throw(socket.gaierror("offline")))
+    monkeypatch.setattr(cli, "HttpMirrorProbe", lambda cfg: FixtureMirrorProbe(outcomes))
+    monkeypatch.setattr(cli, "StatusD420Directory", lambda cfg: StaticDirectory(DirectoryRead([], 0, 0)))
+    if tracker is not None:
+        monkeypatch.setattr(cli, "_warning_tracker", lambda: tracker)
+    data, site = tmp_path / "data", tmp_path / "site"
+    return ["probe-mirrors", "--data", str(data), "--site-out", str(site)], site
+
+
+def _outcome(good):
+    from datetime import datetime, timezone
+    from tweet_relay.mirrors.models import ProbeOutcome, Reason
+    if good:
+        return ProbeOutcome(usable=True, reason=None, ms=50, newest=datetime.now(timezone.utc))
+    return ProbeOutcome(usable=False, reason=Reason.SENT_ELSEWHERE, ms=40, newest=None)
+
+
+def test_probe_mirrors_ok_exits_zero_and_writes_status(monkeypatch, tmp_path, capsys):
+    import json
+    argv, site = _probe_env(monkeypatch, tmp_path, {"a.example": _outcome(True), "b.example": _outcome(True)})
+    assert cli.main(argv) == 0
+    assert capsys.readouterr().out.strip().splitlines()[-1] == "cause=ok"
+    assert json.loads((site / "status.json").read_text())["round"]["at_risk"] is False
+
+
+def test_probe_mirrors_at_risk_exits_three_and_names_each_mirror(monkeypatch, tmp_path, capsys):
+    """AC-1.1, AC-1.7: the cause and each in-use mirror's state are stated."""
+    argv, _ = _probe_env(monkeypatch, tmp_path, {"a.example": _outcome(True), "b.example": _outcome(False)})
+    assert cli.main(argv) == 3
+    out = capsys.readouterr().out
+    assert out.strip().splitlines()[-1] == "cause=at_risk"
+    assert "a.example: healthy" in out and "b.example: sent_elsewhere" in out
+
+
+def test_probe_mirrors_tracker_failure_is_check_broken(monkeypatch, tmp_path, capsys):
+    from tests.doubles import FakeTracker
+    argv, site = _probe_env(monkeypatch, tmp_path, {"a.example": _outcome(True), "b.example": _outcome(True)},
+                            tracker=FakeTracker(fail=True))
+    assert cli.main(argv) == 1
+    assert capsys.readouterr().out.strip().splitlines()[-1] == "cause=check_broken"
+    assert (site / "status.json").exists()                    # still published
+
+
+def test_probe_mirrors_unexpected_error_is_check_broken(monkeypatch, tmp_path, capsys):
+    class Exploding:
+        def probe(self, host, handle):
+            raise RuntimeError("bug")
+    argv, _ = _probe_env(monkeypatch, tmp_path, {})
+    monkeypatch.setattr(cli, "HttpMirrorProbe", lambda cfg: Exploding())
+    assert cli.main(argv) == 1
+    assert capsys.readouterr().out.strip().splitlines()[-1] == "cause=check_broken"
+
+
+def test_probe_mirrors_needs_its_arguments(monkeypatch):
+    monkeypatch.setenv("X_PROFILE_URL", "@santtiagom_")
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["probe-mirrors"])
+    assert exc.value.code == 2
