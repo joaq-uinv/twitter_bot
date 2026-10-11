@@ -184,7 +184,7 @@ and the `d420_instances.json` fixture.
 
 ## Phase 5: History and status.json (DD-5) [P after T003]
 
-**T021 Test `DirHistoryStore`.** `tests/unit/test_history.py`, using `tmp_path`.
+**T021 Test `DirHistoryStore`.** ✅ 2026-10-11 `tests/unit/test_history.py`, using `tmp_path`.
 - Round-trip works. Results older than 90 days are pruned on save.
 - Writes are atomic: a crash between write and rename leaves the old file intact.
 - Bad lines are dropped and counted. More than 50% bad gives an empty history with
@@ -192,11 +192,11 @@ and the `d420_instances.json` fixture.
 - Verify: RED.
 - Covers: FR-18, AC-4.3, E-20, E-21.
 
-**T022 Implement `DirHistoryStore`.** `src/tweet_relay/mirrors/history.py`
+**T022 Implement `DirHistoryStore`.** ✅ 2026-10-11 `src/tweet_relay/mirrors/history.py`
 - Verify: GREEN (T021).
 - Covers: FR-18.
 
-**T023 Test `build_status`.** `tests/unit/test_status.py`
+**T023 Test `build_status`.** ✅ 2026-10-11 `tests/unit/test_status.py`
 - Fields exactly as in data-model.md.
 - `uptime_7d` and `uptime_30d` count unknown freshness as healthy; null when there
   is no data.
@@ -207,7 +207,7 @@ and the `d420_instances.json` fixture.
 - Verify: RED.
 - Covers: AC-3.1, AC-3.2, AC-3.4, AC-4.1, AC-4.2, AC-5.2, AC-5.3, D-4.
 
-**T024 Implement `status.build_status`.** `src/tweet_relay/mirrors/status.py`
+**T024 Implement `status.build_status`.** ✅ 2026-10-11 `src/tweet_relay/mirrors/status.py`
 - Verify: GREEN (T023).
 - Covers: the same as T023.
 
