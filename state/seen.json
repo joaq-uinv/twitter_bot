@@ -83,6 +83,6 @@
     2099150822001070573
   ],
   "bootstrapped": true,
-  "outage_notified": false,
+  "outage_notified": true,
   "last_success": "2026-10-11T22:17:21.178755+00:00"
 }
