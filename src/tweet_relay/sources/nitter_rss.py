@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
@@ -65,19 +66,17 @@ def _parse_link(raw: str, expected_host: str | None = None) -> tuple[str, int] |
     Blind host-rewriting would turn an attacker-chosen path into a plausible x.com
     link delivered to the operator.
 
-    An unexpected link host is logged but NOT rejected. Rejecting it was tried and
-    reverted: mirrors legitimately serve canonical links pointing at another host, so
-    pinning silently emptied a working feed — turning a healthy relay into a silent
-    no-op, which §7 forbids. The host is discarded anyway when the URL is rebuilt from
-    validated parts, so pinning bought no security for that risk.
+    An unexpected link host is NOT rejected. Rejecting it was tried and reverted:
+    mirrors legitimately serve canonical links pointing at another host, so pinning
+    silently emptied a working feed — turning a healthy relay into a silent no-op,
+    which §7 forbids. The host is discarded anyway when the URL is rebuilt from
+    validated parts. parse_feed counts such links; the host itself is never logged,
+    because it is third-party text and the Actions log is public (spec 002 FR-16).
     """
     try:
         parsed = urlparse((raw or "").split("#")[0])
     except ValueError:
         return None
-    if expected_host and (parsed.hostname or "").lower() != expected_host.lower():
-        log.warning("link host %r differs from mirror %r; URL will be rebuilt",
-                    parsed.hostname, expected_host)
     m = STATUS_PATH.match(parsed.path or "")
     if not m:
         return None
@@ -88,6 +87,13 @@ def _parse_link(raw: str, expected_host: str | None = None) -> tuple[str, int] |
         return author, int(sid)
     except ValueError:
         return None
+
+
+def _link_host(raw: str) -> str:
+    try:
+        return (urlparse(raw.split("#")[0]).hostname or "").lower()
+    except ValueError:
+        return ""
 
 
 def _parse_date(raw: str | None) -> datetime | None:
@@ -133,9 +139,13 @@ def parse_feed(raw: bytes, handle: str, expected_host: str | None = None) -> lis
 
     tweets: list[Tweet] = []
     seen_ids: set[int] = set()
+    foreign_links = 0
     for item in channel.findall("item"):
         item_title = (item.findtext("title") or "").strip()
-        parsed_link = _parse_link(item.findtext("link") or "", expected_host)
+        raw_link = item.findtext("link") or ""
+        if expected_host and _link_host(raw_link) != expected_host.lower():
+            foreign_links += 1
+        parsed_link = _parse_link(raw_link, expected_host)
         if parsed_link is None:
             log.warning("dropping item with unrecognised link")
             continue
@@ -169,14 +179,22 @@ def parse_feed(raw: bytes, handle: str, expected_host: str | None = None) -> lis
             continue
         seen_ids.add(post_id)
 
+    if foreign_links:
+        # Once per feed, and only our own validated mirror host: never the link's host.
+        log.warning("%d links point at a host other than mirror %s; URLs will be rebuilt",
+                    foreign_links, expected_host)
+
     # FR-3: the real feed is not date-ordered, so sorting here is load-bearing.
     tweets.sort(key=lambda t: (t.published_at, t.id))
     return tweets
 
 
-def _get(client: httpx.Client, url: str, limit: int) -> bytes:
+def _get(client: httpx.Client, url: str, limit: int, deadline_s: float) -> bytes:
     # Streamed so an oversized body is abandoned mid-download rather than buffered in
-    # full and then rejected (E-9).
+    # full and then rejected (E-9). The deadline covers the whole answer: httpx's
+    # timeout is per read, so a mirror dripping one byte every 14 s could otherwise
+    # hold a 15 s budget for hours (spec 002 data-model: "no *complete* answer").
+    deadline = time.monotonic() + deadline_s
     with client.stream("GET", url) as response:
         response.raise_for_status()
         declared = response.headers.get("content-length")
@@ -184,6 +202,8 @@ def _get(client: httpx.Client, url: str, limit: int) -> bytes:
             raise MirrorError(Reason.TOO_LARGE, f"response declares {declared} bytes, over cap")
         chunks, total = [], 0
         for chunk in response.iter_bytes():
+            if time.monotonic() > deadline:
+                raise MirrorError(Reason.TIMED_OUT, f"no complete answer within {deadline_s:g} s")
             total += len(chunk)
             if total > limit:
                 raise MirrorError(Reason.TOO_LARGE, f"response exceeded {limit} bytes")
@@ -202,7 +222,7 @@ def fetch_one(client: httpx.Client, base: str, handle: str, config) -> list[Twee
     """
     url = f"{base.rstrip('/')}/{handle}/rss"
     try:
-        body = _get(client, url, config.MAX_FEED_BYTES)
+        body = _get(client, url, config.MAX_FEED_BYTES, config.REQUEST_TIMEOUT_SECONDS)
     except httpx.TimeoutException as exc:
         raise MirrorError(Reason.TIMED_OUT, type(exc).__name__) from None
     except httpx.HTTPStatusError as exc:

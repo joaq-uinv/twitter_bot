@@ -65,6 +65,9 @@ phone-width window. Check:
 
 ## 6. Live (after merge)
 
+The `publish` job uses the `github-pages` environment. Its default protection only
+allows the default branch, so run the workflow from `main`.
+
 ```bash
 gh workflow run mirrors.yml && gh run watch
 ```

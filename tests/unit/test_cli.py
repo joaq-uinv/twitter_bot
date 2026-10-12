@@ -177,6 +177,9 @@ def test_probe_mirrors_unexpected_error_is_check_broken(monkeypatch, tmp_path, c
     class Exploding:
         def probe(self, host, handle):
             raise RuntimeError("bug")
+
+        def close(self):
+            pass
     argv, _ = _probe_env(monkeypatch, tmp_path, {})
     monkeypatch.setattr(cli, "HttpMirrorProbe", lambda cfg: Exploding())
     assert cli.main(argv) == 1

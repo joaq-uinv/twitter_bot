@@ -110,3 +110,29 @@ def test_feed_with_no_items_returns_empty(config):
              b"</channel></rss>")
     respx.get(URL).mock(httpx.Response(200, content=empty))
     assert _fetch(config) == []
+
+
+# --- review #4: a total deadline, not just a per-read timeout ---
+
+@respx.mock
+def test_slow_drip_body_is_timed_out(config, monkeypatch):
+    """A hostile mirror sending bytes just under the read timeout must not hold the probe."""
+    from tweet_relay.sources import nitter_rss
+    clock = iter([0.0, 5.0, 10.0, 16.0, 30.0, 60.0])
+    monkeypatch.setattr(nitter_rss.time, "monotonic", lambda: next(clock))
+    respx.get(URL).mock(httpx.Response(200, content=iter([b"<rss>", b"x" * 10, b"x" * 10, b"x"])))
+    assert _reason(config) is Reason.TIMED_OUT
+
+
+# --- review #3: feed-supplied hostnames never reach the logs ---
+
+@respx.mock
+def test_foreign_link_hosts_are_counted_not_logged(config, caplog):
+    import logging
+    feed = FEED.replace(b"://nitter.pp.ua/", b"://zz-leak.example/")
+    respx.get(URL).mock(httpx.Response(200, content=feed))
+    with caplog.at_level(logging.DEBUG):
+        _fetch(config)
+    assert "zz-leak" not in caplog.text
+    rebuilt = [r for r in caplog.records if "rebuilt" in r.getMessage()]
+    assert len(rebuilt) == 1                    # one line per feed, with a count

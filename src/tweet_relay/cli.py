@@ -53,7 +53,8 @@ def _load() -> Config:
 
 def _setup(config: Config) -> None:
     logging_setup.configure(config.LOG_LEVEL,
-                            secrets=[config.CALLMEBOT_APIKEY.get_secret_value()])
+                            secrets=[config.CALLMEBOT_APIKEY.get_secret_value(),
+                                     os.environ.get("GITHUB_TOKEN", "")])
 
 
 def cmd_check_source(config: Config) -> int:
@@ -162,8 +163,7 @@ def cmd_probe_mirrors(config: Config, data: str, site_out: str) -> int:
         print("cause=check_broken")
         return 1
     finally:
-        if hasattr(probe, "close"):
-            probe.close()
+        probe.close()
 
     site = Path(site_out)
     site.mkdir(parents=True, exist_ok=True)

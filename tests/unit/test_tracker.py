@@ -118,3 +118,16 @@ def test_cli_uses_github_tracker_only_with_credentials(monkeypatch):
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     monkeypatch.setenv("GITHUB_REPOSITORY", "joaq-uinv/twitter_bot")
     assert isinstance(cli._warning_tracker(), GitHubIssueTracker)
+
+
+# --- review #2: malformed API answers are TrackerUnavailable, never a crash ---
+
+@respx.mock
+@pytest.mark.parametrize("payload", [b"<html>not json</html>", b"[1, null, \"x\"]",
+                                     b'[{"title": "Mirror unhealthy for 24h: a.example", "number": 3, "created_at": 42}]'])
+def test_malformed_api_answers_do_not_crash(payload):
+    respx.get(f"{API}/issues").mock(httpx.Response(200, content=payload))
+    try:
+        assert tracker().open_warnings() == {}
+    except TrackerUnavailable:
+        pass                                    # either is fine; a crash is not

@@ -70,7 +70,7 @@ class StatusD420Directory:
         if not isinstance(url, str) or not isinstance(domain, str):
             return None
         try:
-            host = urlparse(validate_mirror_url(url)).hostname
+            host = urlparse(validate_mirror_url(url, resolve=False)).hostname
         except ValueError:
             return None
         return host if domain.strip().lower() == host else None

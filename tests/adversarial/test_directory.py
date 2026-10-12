@@ -56,7 +56,6 @@ def test_only_hosts_are_returned(config):
     entry("nitter.pp.ua", url="http://nitter.pp.ua"),            # not https
     entry("nitter.pp.ua", url="https://other.example"),          # domain/url disagree
     entry("nitter.pp.ua", url="https://nitter.pp.ua:8443"),      # port
-    entry("cgnat.internal-test"),                                # non-global address
     {"domain": "nitter.pp.ua"},                                  # url missing
     {"url": 42, "domain": "nitter.pp.ua"},                       # wrong type
     "https://nitter.pp.ua",                                      # not an object
@@ -110,3 +109,14 @@ def test_network_failure_is_unavailable(config):
     respx.get(URL).mock(side_effect=httpx.ConnectError("down"))
     with pytest.raises(DirectoryUnavailable):
         StatusD420Directory(config).list()
+
+
+@respx.mock
+def test_discovery_makes_no_dns_lookups(config, monkeypatch):
+    """Review #5: up to 1000 entries must not mean 1000 unbounded DNS lookups. Addresses
+    are checked at probe time instead (DD-4), for the at most 25 hosts probed."""
+    def no_dns(*a, **k):
+        raise AssertionError("discovery resolved a name")
+    monkeypatch.setattr(config_module.socket, "getaddrinfo", no_dns)
+    read = _read(config, {"hosts": [entry("a.example"), entry("cgnat.internal-test")]})
+    assert read.hosts == ["a.example", "cgnat.internal-test"]

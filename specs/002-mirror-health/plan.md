@@ -136,3 +136,37 @@ and `tests/`, so T032's static checks could not read it. The page now lives at
 `src/tweet_relay/site/` and is part of the tested image. `probe-mirrors --site-out`
 writes the **complete** site: the three static files plus `status.json`. So the
 workflow uploads one directory instead of merging two. Nothing else in DD-9 changes.
+
+## Amendment P-2: pre-merge review fixes (2026-10-12, T038)
+
+The review found no critical issues and 6 important ones, all fixed test-first:
+
+1. **History wipe on a fetch failure.** Any `git fetch` error was read as "no branch
+   yet", so one round would have been force-pushed over 90 days of history. Now
+   `git ls-remote --exit-code` exit 2, and only 2, starts a fresh history. Anything
+   else stops the job, and `publish` is skipped.
+2. **Unexpected tracker errors lost the round.** A non-JSON 2xx or a malformed issue
+   escaped `_reconcile`, which runs before `save`. The tracker now maps those to
+   `TrackerUnavailable`, and `_reconcile` treats any exception as a tracker failure,
+   so the round is always saved and published (contract warning-tracker 3).
+3. **Feed-supplied hostnames in the public log.** The relay logged each foreign link
+   host at WARNING. It now logs one line per feed with a count and our own validated
+   mirror host. The FR-16 no-leak test now plants a marker in link hosts.
+4. **No total deadline.** httpx's timeout is per read, so a dripping mirror could
+   hold a probe until the job timed out. `_get` now enforces `REQUEST_TIMEOUT_SECONDS`
+   for the whole answer, which matches data-model `timed_out` ("no *complete*
+   answer"). The relay benefits too.
+5. **A DNS lookup per list entry.** Up to 1000 unbounded `getaddrinfo` calls ran
+   before any probe. Discovery now validates shape only
+   (`validate_mirror_url(resolve=False)`). The address check still runs at probe time
+   for the at most 25 hosts probed (DD-4), and configured mirrors are still resolved
+   at config time.
+6. **The parser of hostile input held a write token.** `mirrors.yml` is now two
+   jobs. `probe` has `contents: read` and `issues: write`. `publish` has
+   `contents: write`, `pages` and `id-token`, and only moves the artifacts `probe`
+   produced. This supersedes DD-5's single-job workflow; the data format is unchanged.
+
+Minor fixes: a warning when the Healthchecks secret is unset; a newly opened
+warning is dated *now*, like its issue, so "open since" no longer jumps;
+`latest.json` requires a real boolean for `at_risk`; `HOST_RE` is public;
+`GITHUB_TOKEN` is in the log-redaction list; and the dead `hasattr` is gone.

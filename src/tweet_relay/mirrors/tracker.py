@@ -8,7 +8,7 @@ from typing import Protocol
 
 import httpx
 
-from ..config import _HOST_RE as HOST_RE
+from ..config import HOST_RE
 from .models import Reason
 
 
@@ -111,14 +111,18 @@ class GitHubIssueTracker:
                                                       "per_page": "100"})
         out = {}
         for i in issues if isinstance(issues, list) else []:
-            title = i.get("title") if isinstance(i, dict) else None
-            if "pull_request" in i or not isinstance(title, str) or not title.startswith(_TITLE_PREFIX):
+            if not isinstance(i, dict) or "pull_request" in i:
+                continue
+            title = i.get("title")
+            if not isinstance(title, str) or not title.startswith(_TITLE_PREFIX):
                 continue
             host = title[len(_TITLE_PREFIX):]
             if not HOST_RE.match(host):
                 continue
             try:
-                since = datetime.fromisoformat(i["created_at"].replace("Z", "+00:00"))
+                since = datetime.fromisoformat(str(i["created_at"]).replace("Z", "+00:00"))
+                if since.tzinfo is None:
+                    continue
                 out[host] = (int(i["number"]), since)
             except (KeyError, TypeError, ValueError):
                 continue
@@ -140,4 +144,9 @@ class GitHubIssueTracker:
         if response.status_code >= 300:
             # Status only: the body could echo anything, including credentials.
             raise TrackerUnavailable(f"GitHub API answered {response.status_code}")
-        return response.json() if response.content else None
+        if not response.content:
+            return None
+        try:
+            return response.json()
+        except ValueError:
+            raise TrackerUnavailable("GitHub API answered with something that is not JSON") from None

@@ -53,6 +53,9 @@ class FixtureMirrorProbe:
         self.calls.append(host)
         return self.outcomes[host]
 
+    def close(self):
+        pass
+
 
 class StaticDirectory:
     def __init__(self, read=None, error=None):

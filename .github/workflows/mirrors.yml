@@ -7,6 +7,10 @@
 #                    every at-risk round, so GitHub's failure email repeats (D-3)
 #   1/2 broken    -> no Healthchecks ping (its 24 h grace reports a stopped check,
 #                    DD-7, D-1); run FAILS, so GitHub emails at once
+#
+# Two jobs (review #6): `probe` parses hostile input (mirror feeds, the community
+# list) and holds no write access to code; `publish` holds the push and Pages rights
+# and only moves files that `probe` produced.
 name: Mirror health
 
 "on":
@@ -14,11 +18,7 @@ name: Mirror health
     - cron: "17 */6 * * *"     # ~6 h, offset from the relay's */15 (plan Technical Context)
   workflow_dispatch:
 
-permissions:
-  contents: write              # force-push the mirror-status branch
-  issues: write                # soft warnings (DD-8)
-  pages: write                 # deploy the status page
-  id-token: write              # required by deploy-pages
+permissions: {}
 
 concurrency:
   group: mirror-probe          # E-19: rounds never overlap
@@ -27,26 +27,37 @@ concurrency:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 15        # DD-12: 25 sequential probes x 15 s fits
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+    timeout-minutes: 15        # DD-12: 25 sequential probes, each bounded to 15 s in total
+    permissions:
+      contents: read           # read the mirror-status branch; cannot push anything
+      issues: write            # soft warnings (DD-8)
+    outputs:
+      code: ${{ steps.probe.outputs.code }}
+      has_data: ${{ steps.inventory.outputs.has_data }}
+      has_site: ${{ steps.inventory.outputs.has_site }}
     env:
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       HC_PING_URL: ${{ secrets.HEALTHCHECKS_MIRRORS_PING_URL }}
     steps:
       - uses: actions/checkout@v4
 
-      # History lives on its own orphan branch, one commit (plan DD-5). Missing on the
-      # first run: start empty.
+      # Review #1: only a branch that is genuinely absent starts a fresh history. Any
+      # other failure stops here, so a network blip can never force-push one round over
+      # 90 days of history.
       - name: Restore mirror history
         run: |
           mkdir -p state/mirror-data state/mirror-site
-          if git fetch --depth=1 origin mirror-status 2>/dev/null; then
-            git archive FETCH_HEAD | tar -x -C state/mirror-data
-          else
-            echo "No mirror-status branch yet; starting a fresh history."
-          fi
+          set +e
+          git ls-remote --exit-code --heads origin mirror-status > /dev/null
+          rc=$?
+          set -e
+          case "$rc" in
+            0) git fetch --depth=1 origin mirror-status
+               git archive FETCH_HEAD | tar -x -C state/mirror-data ;;
+            2) echo "No mirror-status branch yet; starting a fresh history." ;;
+            *) echo "::error title=History unreadable::git ls-remote exited $rc; refusing to continue rather than overwrite the history."
+               exit 1 ;;
+          esac
 
       # The probe needs no delivery credentials (FR-19): only the account to probe.
       - name: Write run configuration
@@ -71,29 +82,29 @@ jobs:
             probe-mirrors --data /data/mirror-data --site-out /data/mirror-site 2>&1 | tee probe.log
           echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
-      # Saved whatever the verdict: an at-risk round is still history (FR-1).
-      - name: Persist mirror history
-        if: ${{ always() && hashFiles('state/mirror-data/history.jsonl') != '' }}
+      - name: Inventory outputs
+        id: inventory
+        if: ${{ always() }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          export GIT_INDEX_FILE="$RUNNER_TEMP/mirror-status.index"
-          git --work-tree=state/mirror-data add -f history.jsonl latest.json
-          tree=$(git write-tree)
-          commit=$(git commit-tree "$tree" -m "mirror status: $RUN_URL")
-          git push -f origin "$commit:refs/heads/mirror-status"
+          echo "has_data=$([ -s state/mirror-data/history.jsonl ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_site=$([ -s state/mirror-site/index.html ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Hand history to the publish job
+        if: ${{ always() && steps.inventory.outputs.has_data == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mirror-data
+          path: |
+            state/mirror-data/history.jsonl
+            state/mirror-data/latest.json
+          retention-days: 1
 
       # The page is published even when at risk: it must show the risk (US-3).
-      - name: Upload status page
-        if: ${{ always() && hashFiles('state/mirror-site/index.html') != '' }}
+      - name: Hand the status page to the publish job
+        if: ${{ always() && steps.inventory.outputs.has_site == 'true' }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: state/mirror-site
-
-      - name: Deploy status page
-        id: deploy
-        if: ${{ always() && hashFiles('state/mirror-site/index.html') != '' }}
-        uses: actions/deploy-pages@v4
 
       # AC-1.7: the summary states which of the two failure causes applies.
       - name: Write job summary
@@ -116,10 +127,14 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report to Healthchecks
-        if: ${{ always() && env.HC_PING_URL != '' }}
+        if: ${{ always() }}
         env:
           CODE: ${{ steps.probe.outputs.code }}
         run: |
+          if [ -z "$HC_PING_URL" ]; then
+            echo "::warning title=Healthchecks not configured::Set HEALTHCHECKS_MIRRORS_PING_URL so a stopped mirror check is noticed (FR-9)."
+            exit 0
+          fi
           case "$CODE" in
             0) suffix="" ;;
             3) suffix="/fail" ;;
@@ -139,3 +154,45 @@ jobs:
             3) echo "::error title=Mirrors at risk::Fewer than 2 in-use mirrors are healthy. See the status page."; exit 1 ;;
             *) echo "::error title=Mirror check broken::probe-mirrors exited ${CODE:-without running}."; exit 1 ;;
           esac
+
+  publish:
+    needs: probe
+    # Only when the probe actually ran: an aborted restore (review #1) publishes nothing.
+    if: ${{ always() && needs.probe.outputs.code != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write          # force-push the mirror-status branch
+      pages: write
+      id-token: write          # required by deploy-pages
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        if: ${{ needs.probe.outputs.has_data == 'true' }}
+
+      - uses: actions/download-artifact@v4
+        if: ${{ needs.probe.outputs.has_data == 'true' }}
+        with:
+          name: mirror-data
+          path: mirror-data
+
+      # One commit, force-pushed: the history is inside the file, not in git (DD-5).
+      - name: Persist mirror history
+        if: ${{ needs.probe.outputs.has_data == 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          export GIT_INDEX_FILE="$RUNNER_TEMP/mirror-status.index"
+          git --work-tree=mirror-data add -f history.jsonl latest.json
+          tree=$(git write-tree)
+          commit=$(git commit-tree "$tree" -m "mirror status: $RUN_URL")
+          git push -f origin "$commit:refs/heads/mirror-status"
+
+      - name: Deploy status page
+        id: deploy
+        if: ${{ needs.probe.outputs.has_site == 'true' }}
+        uses: actions/deploy-pages@v4

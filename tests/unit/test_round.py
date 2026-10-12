@@ -107,3 +107,20 @@ def test_relay_state_and_sink_are_never_touched(cfg, monkeypatch):
                         lambda *a, **k: pytest.fail("the probe built a delivery sink"))
     _run(cfg, ALL_OK)
     assert not pathlib.Path(cfg.STATE_PATH).exists()
+
+
+# --- review #2: any tracker failure still records and publishes the round ---
+
+def test_unexpected_tracker_error_still_saves_the_round(cfg):
+    class Broken(FakeTracker):
+        def open_warnings(self):
+            raise ValueError("garbled response")
+    out, _, store, _ = _run(cfg, ALL_OK, tracker=Broken())
+    assert out.tracker_error is True and store.saved is not None
+
+
+# --- review minor: "open since" is stable across rounds ---
+
+def test_newly_opened_warning_is_dated_now_like_the_issue(cfg):
+    _, _, store, _ = _run(cfg, {**ALL_OK, "c.example": bad()}, history=_unhealthy_history("c.example"))
+    assert store.saved.latest.warnings["c.example"] == T

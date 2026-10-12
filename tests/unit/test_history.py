@@ -102,3 +102,11 @@ def test_a_crash_mid_save_leaves_the_old_files_intact(tmp_path, monkeypatch):
     with pytest.raises(OSError):
         store.save(History(results=[good(T), bad(T)], latest=LATEST), now=T)
     assert (tmp_path / "history.jsonl").read_bytes() == before
+
+
+def test_latest_with_non_boolean_at_risk_is_rejected(tmp_path):
+    store = DirHistoryStore(tmp_path)
+    store.save(History(results=[good(T)], latest=LATEST), now=T)
+    path = tmp_path / "latest.json"
+    path.write_text(path.read_text().replace('"at_risk": true', '"at_risk": "yes"'))
+    assert store.load().latest == EMPTY_LATEST

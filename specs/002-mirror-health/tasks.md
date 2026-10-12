@@ -327,7 +327,7 @@ REST API faked by respx.
   reason label; `status.json` contains no response text (spot check plus T029).
 - Covers: AC-5.1, FR-3, FR-16.
 
-**T038 Pre-merge review.** `superpowers:requesting-code-review` on the branch.
+**T038 Pre-merge review.** ✅ 2026-10-12 `superpowers:requesting-code-review` on the branch.
 - Fix every Critical and Important finding.
 - Record the outcome as an amendment in plan.md.
 - Verify: the review verdict is "Yes", or "With fixes" with the fixes landed; `PT`
@@ -400,6 +400,12 @@ Every FR-1..19, AC-1.1..5.4 and E-1..22 maps to at least one task.
 
 *(T034, T037 and T039 record their results here, with dates.)*
 
+- 2026-10-12, T038: the first review attempt was cut off by a safety filter, with no
+  output. On re-run the verdict was "with fixes": 0 critical, 6 important, 8 minor.
+  All 6 important and 6 of the minor are fixed (plan amendment P-2). The remaining
+  two minor items are documentation (`--progress` reorder, environment note). Full
+  suite: 546 passed. Each new test was checked to fail against the old code (two
+  of them only after fixing their own `http://` vs `https://` fixture mistake).
 - 2026-10-11, T037 (local live probe, read-only): exit 0 (`cause=ok`), 31 s.
   3 of 4 in-use healthy: `kareem.one` refused_answer (8.6 s); `pp.ua`,
   `thepixora` and `meowing` healthy. 5 candidates discovered (9 accepted, 0

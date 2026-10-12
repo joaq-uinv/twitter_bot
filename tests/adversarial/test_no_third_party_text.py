@@ -24,7 +24,8 @@ MARK = "ZZ-MARKER-"
 
 
 def markers_in(text: str) -> list[str]:
-    return sorted({text[i:i + len(MARK) + 1] for i in range(len(text)) if text.startswith(MARK, i)})
+    up = text.upper().replace(f"{MARK}8.INTERNAL-TEST", "")   # a validated hostname: allowed (FR-16)
+    return sorted({up[i:i + len(MARK) + 1] for i in range(len(up)) if up.startswith(MARK, i)})
 
 
 def test_the_detector_finds_a_planted_marker():
@@ -44,6 +45,7 @@ def hostile_world(monkeypatch, tmp_path):
     feed = (FIX / "feed_pp_ua.xml").read_bytes()
     feed = feed.replace(b"<description>", f"<description>{MARK}1 ".encode())
     feed = feed.replace(b"santi / @santtiagom_", f"santi / @santtiagom_ {MARK}2".encode(), 1)
+    feed = feed.replace(b"://nitter.pp.ua/", f"://{MARK.lower()}b.example/".encode())
     respx.get("https://m1.example/santtiagom_/rss").mock(httpx.Response(200, content=feed))
     respx.get("https://m2.example/santtiagom_/rss").mock(
         httpx.Response(403, text=f"<h1>{MARK}3 forbidden</h1>"))
@@ -54,7 +56,7 @@ def hostile_world(monkeypatch, tmp_path):
     respx.get(StatusD420Directory.URL).mock(httpx.Response(200, json={"hosts": [
         {"url": "https://cand.example", "domain": "cand.example", "country": f"{MARK}6",
          "version": f"{MARK}7"},
-        {"url": f"https://{MARK.lower()}8.internal-test", "domain": f"{MARK}8"},
+        {"url": f"https://{MARK.lower()}8.internal-test", "domain": f"{MARK.lower()}8.internal-test"},
         {"url": "https://m1.example", "domain": "m1.example", "note": f"{MARK}9"},
     ], "last_update": f"{MARK}A"}))
     return tmp_path
@@ -86,4 +88,5 @@ def test_a_full_round_publishes_no_third_party_text(hostile_world, monkeypatch, 
     status = json.loads(published["status.json"])
     reasons = {m["host"]: m["reason"] for m in status["mirrors"]}
     assert reasons == {"m1.example": None, "m2.example": "refused_answer",
-                       "m3.example": "sent_elsewhere", "cand.example": "malformed_content"}
+                       "m3.example": "sent_elsewhere", "cand.example": "malformed_content",
+                       f"{MARK.lower()}8.internal-test": "refused_address"}

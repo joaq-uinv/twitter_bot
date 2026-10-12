@@ -78,5 +78,13 @@ def _reconcile(tracker, results, now, previous) -> tuple[dict[str, datetime], bo
     except TrackerUnavailable as exc:
         log.error("warning tracker unavailable; soft warnings are not being tracked: %s", exc)
         return dict(previous), True
+    except Exception as exc:
+        # Review #2: whatever the tracker does, the round's results are still saved and
+        # published (contract warning-tracker 3). Type only: the message could be anything.
+        log.error("warning tracker failed unexpectedly (%s); soft warnings not updated",
+                  type(exc).__name__)
+        return dict(previous), True
     kept = {h: t for h, t in open_now.items() if h not in plan.close}
-    return {**kept, **{h: since for h, (since, _) in plan.open.items()}}, False
+    # A newly opened warning is dated now, as its issue's created_at will be on every
+    # later round, so the page's "open since" does not jump.
+    return {**kept, **{h: now for h in plan.open}}, False

@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from ..config import _HOST_RE as HOST_RE
+from ..config import HOST_RE
 from .health import EpisodeState
 from .models import Freshness, ProbeResult, Reason, Role
 from .roster import DiscoveryState
@@ -109,9 +109,11 @@ def _latest_from_json(d: dict) -> Latest:
     for n in (rnd["in_use_healthy"], rnd["in_use_total"], disc["accepted"], disc["rejected"]):
         if not isinstance(n, int) or isinstance(n, bool) or n < 0:
             raise ValueError("invalid count")
+    if not isinstance(rnd["at_risk"], bool):
+        raise ValueError("invalid at_risk")
     return Latest(round_t=_dt(rnd["t"]), reference=_dt(rnd["reference"]),
                   in_use_healthy=rnd["in_use_healthy"], in_use_total=rnd["in_use_total"],
-                  at_risk=bool(rnd["at_risk"]),
+                  at_risk=rnd["at_risk"],
                   episode=EpisodeState(at_risk_since=_dt(d["episode"]["at_risk_since"])),
                   discovery=DiscoveryState(last_ok=_dt(disc["last_ok"]),
                                            accepted=disc["accepted"], rejected=disc["rejected"],
