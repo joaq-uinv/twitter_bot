@@ -343,15 +343,15 @@ doubles in `tests/doubles.py`.
 - Fix every Critical and Important finding; record as plan amendment(s).
 - Verify: verdict "Yes", or "With fixes" with the fixes landed; `PT` green.
 
-**T046 Operator setup** (quickstart steps 1–3). Needs your Telegram account.
+**T046 Operator setup** ✅ 2026-10-21 (quickstart steps 1–3). Needs your Telegram account.
 - Verify: `gh secret list` shows `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`;
   `test-delivery` prints "✓ Sent" and the message arrives.
 - Covers: D-4.
 
-**T047 Dry run in Actions** (quickstart step 4), after merge.
+**T047 Dry run in Actions** ✅ 2026-10-21 (quickstart step 4), after merge.
 - Verify: the job summary shows cards and no message is sent; no state commit.
 
-**T048 Live switch-over** (quickstart steps 5–6).
+**T048 Live switch-over** ✅ 2026-10-21 (quickstart steps 5–6).
 - Verify: announcement once; the stuck posts arrive with cards; no pre-2026-10-20 post
   repeats; `/status`, `/pause`, `/resume` behave as quickstart step 6; a second
   account's `/pause` has no effect.
@@ -421,6 +421,26 @@ doubles in `tests/doubles.py`.
 ## Manual verification log
 
 *(Tasks record results here, with dates.)*
+
+- 2026-10-21, T046–T048 (live, after merge `168a371`, mirror swap 001 A-14 included):
+  - T046: secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set; `test-delivery`
+    printed "✓ Sent" and the operator saw the message. The token was once pasted into
+    the conversation and a shell command; the operator was asked to revoke it with
+    BotFather `/revoke` and replace it.
+  - T047 ([run 39663423496](https://github.com/joaq-uinv/twitter_bot/actions/runs/39663423496)):
+    dry run green; announcement, two "unknown" replies (the operator's setup
+    messages), 10 posts each with a `card:` line, 9 withheld; no state commit.
+  - T048 switch-over ([run 39663779658](https://github.com/joaq-uinv/twitter_bot/actions/runs/39663779658)):
+    sent 10, withheld 9, failed 0. None of the 10 was in the pre-switch delivered set;
+    all 10 recorded; `announced` true.
+  - T048 commands ([run 39664705404](https://github.com/joaq-uinv/twitter_bot/actions/runs/39664705404)):
+    `/status` and `/pause` handled in order; "paused, 10 posts waiting", `sent=0`,
+    run green. `kareem.one` failed and `mie.foundation` (added by A-14) served the feed.
+  - T048 resume ([run 39664882139](https://github.com/joaq-uinv/twitter_bot/actions/runs/39664882139)):
+    two `/resume` messages (the offset moved by 2, so two distinct updates, not a
+    double-handle); 10 delivered oldest first, 0 withheld.
+  - Not yet confirmed by the operator: how the preview cards and "(no text)" posts
+    look in the Telegram app, and the stranger check from a second account.
 
 - 2026-10-21, Phase 1 (T001–T009): `PT` 585 passed. Each test pair was RED first for
   the stated reason (empty text rejected; `preview_url`, `tweet_relay.commands` and
