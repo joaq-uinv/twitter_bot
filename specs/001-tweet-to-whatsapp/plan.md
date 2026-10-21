@@ -488,3 +488,19 @@ enough on its own.
 - The list is ordered fastest first. `meowing.monster` (12 s) goes last.
 - The live tests also caught `kareem.one` failing and then recovering within
   minutes. Failover covers that, and spec 002 will make it visible.
+
+## Amendment A-12 — base image moved off AWS ECR Public (2026-10-21)
+
+From 2026-10-20 the ECR Public mirror chosen in A-9 started refusing anonymous
+pulls from GitHub's shared runner IPs: `429 Too Many Requests: Data limit
+exceeded`. Three relay runs and the first mirror-health run (spec 002) failed at
+the image build. This is the same failure as Docker Hub's, from a different
+registry.
+
+The base image now comes from `mirror.gcr.io/library/python:3.12-slim`, Google's
+pull-through mirror of the same official Docker Hub image. Probed 2026-10-21: it
+serves the manifest without authentication. Its rate limits are not documented.
+
+Rejected: caching the built image in GitHub's own registry (ghcr.io). It avoids
+third-party limits entirely, but it needs `packages: write`, a cache-key scheme and
+login steps in both workflows (§8). It is the next step if this mirror rate-limits too.

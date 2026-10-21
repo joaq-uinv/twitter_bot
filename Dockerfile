@@ -1,6 +1,7 @@
-# Docker Hub rate-limits anonymous pulls from shared CI IPs (429 on 2026-10-09,
-# plan A-9). Same official image, served from the AWS ECR Public mirror.
-FROM public.ecr.aws/docker/library/python:3.12-slim AS base
+# Docker Hub (2026-10-09, plan A-9) and then AWS ECR Public (2026-10-20, A-12) both
+# rate-limited anonymous pulls from shared CI IPs. Same official image, served from
+# Google's Docker Hub mirror.
+FROM mirror.gcr.io/library/python:3.12-slim AS base
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
 WORKDIR /app
