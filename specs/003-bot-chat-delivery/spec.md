@@ -12,6 +12,9 @@
 > - It **lifts** 001's "two-way interaction" exclusion, for the four commands below
 >   only.
 >
+> - It **changes** 001's treatment of posts without text of their own (US-7): they
+>   were dropped as malformed, and are now delivered.
+>
 > Everything else in 001 (what counts as a new post, exactly-once delivery,
 > ordering, the per-check limit, the outage notice, hostile input) is unchanged.
 
@@ -134,6 +137,25 @@ finds it cannot pause my relay, read its status, or fill my logs.
   two checks, when the check runs, then the operator's commands are handled as if
   the stranger's did not exist.
 
+### US-7: Posts without text still arrive
+**As** the operator **I want** posts that are only an image, a video or a link to be
+delivered too **so that** I do not silently miss part of what the account publishes.
+
+*Found 2026-10-21:* every recent check dropped three such posts as "empty after
+normalisation". The account posts like this regularly.
+
+**Acceptance criteria**
+- **AC-7.1** Given a new post whose text is empty once cleaned, when a check runs,
+  then exactly one message is delivered for it: a fixed line saying it is a post with
+  no text (worded by kind, so a repost is never presented as the account's own),
+  followed by the post's link, with the preview card as for any post.
+- **AC-7.2** Given such a post, when it is delivered, then it counts as delivered,
+  is never delivered again, and follows the same ordering, per-check limit, pause and
+  exactly-once rules as any other post.
+- **AC-7.3** Given a post that is invalid for any other reason (wrong account, bad
+  identifier, unusable time), when a check runs, then it is still dropped as before.
+  Only "no text" changes.
+
 ## Functional Requirements
 
 **Delivery**
@@ -183,6 +205,11 @@ finds it cannot pause my relay, read its status, or fill my logs.
   listed by the sources when the operator resumes are not delivered (short pauses
   only; see Out of Scope).
 
+**Posts without text**
+- **FR-19** The system MUST deliver a post whose own text is empty after cleaning,
+  as a fixed "no text" line plus the post's link (US-7). An empty text MUST NOT, on
+  its own, make a post invalid. Every other validity rule of 001 FR-8 is unchanged.
+
 **Secrets and alarms**
 - **FR-16** The bot's credentials and the operator's chat identity MUST be treated
   as secrets: never logged, never in an error message, never in the run's report or
@@ -213,6 +240,8 @@ finds it cannot pause my relay, read its status, or fill my logs.
 | E-15 | Paused for longer than the sources' recent window | On resume, the confirmation carries the warning in AC-4.5; posts no longer listed are not delivered |
 | E-16 | Post link cannot produce a preview card (deleted post, go-between down or blocked) | Message still delivered with its text and link; a missing card is never a delivery failure. If the go-between stops working altogether, replacing it is a plan change, not a spec change |
 | E-20 | The go-between service changes, dies, or starts misbehaving (e.g. forwarding elsewhere) | Posts are still delivered: the message keeps the post's text, so the operator can still find it on the account. The operator notices from missing cards or bad links, and swapping the go-between is a plan change |
+| E-21 | A post with no text that is also a repost or a quote | The fixed line names the kind and, for a repost, the original author (AC-7.1) |
+| E-22 | A post whose "text" is only invisible or control characters | Cleaned to empty, so treated as a post with no text (AC-7.1); the characters never reach the message |
 | E-17 | `/status` when no check has delivered anything yet, or the record is fresh | Reply states "none yet" instead of a time or count |
 | E-18 | Paused, then the first check on the new channel runs | The switch announcement (AC-2.3) still appears; stuck posts wait for `/resume` |
 | E-19 | Stranger's message contains a secret-looking string or a fake log line | Never logged (FR-7), so cannot reach any report |
@@ -243,6 +272,7 @@ context loss.
 | D-1 | Post addresses often produce no preview card in chat apps. Link through a go-between that builds the card, or keep the post's own address? | Go-between address that produces the card and forwards to the post | The operator asked for preview cards, and the post's own address often yields none because the post's site blocks preview services. Accepted cost: the go-between sees which posts the operator opens, and the card depends on a third party. The go-between gets only the post's public identity (FR-2), and the message keeps the post's text if it fails (E-20) |
 | D-2 | Announce the switch, or let the first post be the first message? | One-time "now delivering here" message on the first check, never repeated | A quiet account would otherwise be indistinguishable from a broken setup, the failure mode §7 exists to prevent. Once-only, like 001 D-2, so repeated runs never spam |
 | D-3 | How strict is command matching? | Case-insensitive; words after the command are ignored | Phone keyboards capitalise and autocorrect. A "try /help" reply to `/Pause` would cost the operator a whole check interval for nothing. Ignored words are never echoed, so this adds no hostile-input surface |
+| D-5 | Posts with no text of their own were being dropped as malformed. Fix it here? | Yes: deliver them as a fixed "no text" line plus the link (US-7, FR-19) | *Decided 2026-10-21, at the operator's request, after research R-5.* Dropping them breaks 001's promise of every post exactly once without any notice (§7). A fixed line is safe: nothing in it comes from the post except validated handles and the link, and the preview card shows the image |
 | D-4 | What if the configured chat identity points at the wrong chat? | Each check confirms the target is a one-to-one private chat and fails loudly otherwise; that it is the operator's is confirmed once at setup | Sending posts and status into a group or channel would leak them to others. Whether a private chat belongs to the operator cannot be checked by the relay, so setup confirms it once with a test message |
 
 ## Success
