@@ -1,4 +1,4 @@
-"""TweetSource contract. See specs/001-tweet-to-whatsapp/contracts/tweet-source.md."""
+"""TweetSource contract. See specs/001-tweet-to-whatsapp/contracts/tweet-source.md (the folder keeps its original name)."""
 from __future__ import annotations
 from typing import Protocol
 from ..models import Tweet

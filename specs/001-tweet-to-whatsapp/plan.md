@@ -504,3 +504,33 @@ serves the manifest without authentication. Its rate limits are not documented.
 Rejected: caching the built image in GitHub's own registry (ghcr.io). It avoids
 third-party limits entirely, but it needs `packages: write`, a cache-key scheme and
 login steps in both workflows (§8). It is the next step if this mirror rate-limits too.
+
+## Amendment A-13 — delivery channel replaced by spec 003 (2026-10-21)
+
+CallMeBot's free quota ran out on 2026-10-20 (`You have 0 messages left … subscribe`),
+so every check failed from then on. Spec `003-bot-chat-delivery` replaces the channel
+with a private Telegram bot chat and adds operator commands. Everything in this plan
+that names CallMeBot (DD for the sink, A-3, A-5, A-7, A-11's refusal codes) is
+historical from here; `MessageSink` is now specified by
+`specs/003-bot-chat-delivery/contracts/message-sink.md`. The relay logic (dedup,
+ordering, cap, outage notice, minimal-form retry) is unchanged. Spec 003 also stops
+dropping posts that have no text of their own (003 US-7), changing this spec's
+treatment of them as malformed.
+
+## Amendment A-14 — second mirror swap (2026-10-21)
+
+The spec 002 mirror check reported AT RISK (1 of 4 in-use healthy) on 2026-10-21. Probed
+twice each from the operator's machine at about 19:40 UTC, then through the relay's own
+`check-source`:
+
+| Mirror | Result | Decision |
+|---|---|---|
+| `nitter.kareem.one` | 200, 19 posts | keep |
+| `nitter.meowing.monster` | 200, 19 posts (502 earlier the same day) | keep, last |
+| `nitter.pp.ua` | 403 both times | **out** |
+| `shitter.thepixora.com` | 403 both times | **out** |
+| `nitter.jaydenha.uk` | 200, 19 posts (an HTML access queue on 2026-10-10) | **in** |
+| `nitter.mie.foundation` | 200, 19 posts; first seen as a 002 candidate | **in** |
+
+This is the swap spec 002 was built to make easy: both replacements came from its
+candidate list.

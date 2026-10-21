@@ -76,9 +76,12 @@ def test_repeated_outage_notifies_once_even_across_many_checks(config):
 def test_sink_failure_during_outage_notice_does_not_crash(config):
     """Both halves broken at once is exactly when a crash would be worst."""
     class DeadSink:
-        def send(self, message):
+        def send(self, message, *, preview_url=None):
             from tweet_relay.models import DeliveryFailed
             raise DeliveryFailed("channel down too")
+
+        def chat_is_private(self):
+            return True
 
     result = Pipeline(config, FakeSource(error="down"), DeadSink()).run_once()
     assert result.outage is True

@@ -80,3 +80,23 @@ def test_minimal_form_never_includes_post_text():
     from tweet_relay.formatter import render_minimal
     post = t(text="UNIQUE-MARKER-7f3a anything at all")
     assert "UNIQUE-MARKER-7f3a" not in render_minimal(post, "santtiagom_")
+
+
+@pytest.mark.parametrize("kind,author,lead", [
+    (TweetKind.ORIGINAL, "santtiagom_", "New post from @santtiagom_ (no text)"),
+    (TweetKind.RETWEET, "atrjava", "@santtiagom_ reposted @atrjava (no text)"),
+    (TweetKind.QUOTE, "santtiagom_", "@santtiagom_ quoted a post (no text)"),
+    (TweetKind.REPLY, "santtiagom_", "@santtiagom_ replied (no text)"),
+])
+def test_post_without_text_gets_a_fixed_line_by_kind(kind, author, lead):
+    """003 AC-7.1, E-21: a repost is never presented as the account's own post."""
+    post = t(text="", author=author, kind=kind)
+    assert render(post, "santtiagom_") == f"{lead}\n\n{post.url}"
+
+
+def test_minimal_form_of_a_post_without_text_does_not_claim_lost_text():
+    """Review m-6."""
+    from tweet_relay.formatter import render_minimal
+    post = t(text="")
+    assert render_minimal(post, "santtiagom_") == \
+        f"New post from @santtiagom_ (no text): {post.url}"

@@ -1,4 +1,4 @@
-import pathlib, pytest
+import pathlib, socket, pytest
 from hypothesis import settings as hyp_settings
 from hypothesis.database import DirectoryBasedExampleDatabase
 from tweet_relay.config import Config
@@ -15,6 +15,24 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture(autouse=True)
+def no_network(request, monkeypatch):
+    """§5, enforced: a unit test that opens a socket fails instead of quietly calling a
+    real service. Found 2026-10-21 (spec 003 T039): a dry-run test built a real bot
+    from the test token and reached the live API. Tests marked `live` are exempt."""
+    if request.node.get_closest_marker("live"):
+        return
+
+    def refuse(self, address, *a, **kw):
+        if self.family == socket.AF_UNIX:
+            return original(self, address, *a, **kw)
+        self.close()          # else an unclosed-socket warning masks the real error
+        raise RuntimeError(f"unit test tried to open a network connection to {address!r}")
+    original = socket.socket.connect
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket.socket, "connect_ex", refuse)
+
+
+@pytest.fixture(autouse=True)
 def isolate_from_dotenv(monkeypatch):
     """Tests must never read the operator's real .env.
 
@@ -24,7 +42,8 @@ def isolate_from_dotenv(monkeypatch):
     variables for every test.
     """
     monkeypatch.setitem(Config.model_config, "env_file", None)
-    for var in ("X_PROFILE_URL", "CALLMEBOT_PHONE", "CALLMEBOT_APIKEY",
+    for var in ("X_PROFILE_URL", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+                "STATUS_PAGE_URL", "MIRROR_LATEST_PATH",
                 "NITTER_INSTANCES", "STATE_PATH", "INCLUDE_RETWEETS",
                 "INCLUDE_REPLIES", "INCLUDE_QUOTES", "POLL_INTERVAL_SECONDS",
                 "MAX_MESSAGES_PER_RUN", "LOG_LEVEL"):
@@ -41,8 +60,8 @@ def real_feed() -> bytes:
 def config(tmp_path):
     return Config(
         X_PROFILE_URL="https://x.com/santtiagom_",
-        CALLMEBOT_PHONE="+34600111222",
-        CALLMEBOT_APIKEY="test-key-do-not-log",
+        TELEGRAM_BOT_TOKEN="123456789:TEST-token-do-not-log-AAAAAAAAAAAAAAAAAA",
+        TELEGRAM_CHAT_ID="111222333",
         NITTER_INSTANCES="https://m1.example.com,https://m2.example.com",
         STATE_PATH=str(tmp_path / "seen.json"),
     )

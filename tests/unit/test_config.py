@@ -1,7 +1,8 @@
 import pytest
 from tweet_relay.config import Config, extract_handle
 
-BASE = dict(CALLMEBOT_PHONE="+34600111222", CALLMEBOT_APIKEY="secret123")
+TOKEN = "123456789:TEST-token-do-not-log-AAAAAAAAAAAAAAAAAA"
+BASE = dict(TELEGRAM_BOT_TOKEN=TOKEN, TELEGRAM_CHAT_ID="111222333")
 
 
 def cfg(**kw):
@@ -50,10 +51,43 @@ def test_defaults_match_spec():
     assert len(c.instances) == 4             # the four verified mirrors
 
 
-@pytest.mark.parametrize("bad", ["600111222", "+0600111222", "abc", "+3460011122233444"])
-def test_rejects_bad_phone(bad):
+@pytest.mark.parametrize("bad", ["123", "abc:def", "123456789:short", "123456789:" + "a" * 30 + " x",
+                                 "x123456789:" + "a" * 35, "123456789:" + "a" * 20 + "\n" + "a" * 15])
+def test_rejects_a_malformed_bot_token_without_echoing_it(bad):
+    """003 data-model: shape only; the error never contains the value (FR-16)."""
+    with pytest.raises(ValueError) as err:
+        cfg(X_PROFILE_URL="@a", TELEGRAM_BOT_TOKEN=bad)
+    assert bad.strip() not in str(err.value) or len(bad.strip()) < 4
+
+
+@pytest.mark.parametrize("bad", ["abc", "12 34", "1.5", "+1", "1" * 21])
+def test_rejects_a_malformed_chat_id_without_echoing_it(bad):
+    with pytest.raises(ValueError) as err:
+        cfg(X_PROFILE_URL="@a", TELEGRAM_CHAT_ID=bad)
+    assert bad not in str(err.value) or len(bad) < 4
+
+
+def test_surrounding_whitespace_from_a_paste_is_tolerated():
+    c = cfg(X_PROFILE_URL="@a", TELEGRAM_BOT_TOKEN=f" {TOKEN}\n", TELEGRAM_CHAT_ID=" 42\n")
+    assert c.TELEGRAM_BOT_TOKEN.get_secret_value() == TOKEN and c.chat_id == 42
+
+
+def test_chat_id_is_exposed_as_an_int():
+    assert cfg(X_PROFILE_URL="@a", TELEGRAM_CHAT_ID="-100123").chat_id == -100123
+
+
+def test_old_channel_settings_are_ignored():
+    """003 AC-1.4: a .env that still has them must not stop the relay."""
+    c = Config(X_PROFILE_URL="@a", CALLMEBOT_PHONE="+34600111222", CALLMEBOT_APIKEY="k",
+               **BASE)
+    c.require_delivery()
+    assert not hasattr(c, "CALLMEBOT_APIKEY")
+
+
+def test_status_page_must_be_https():
     with pytest.raises(ValueError):
-        cfg(X_PROFILE_URL="@a", CALLMEBOT_PHONE=bad)
+        cfg(X_PROFILE_URL="@a", STATUS_PAGE_URL="http://example.com/")
+    assert cfg(X_PROFILE_URL="@a").STATUS_PAGE_URL == "https://joaq-uinv.github.io/twitter_bot/"
 
 
 @pytest.mark.parametrize("bad", [
@@ -78,11 +112,12 @@ def test_accepts_valid_instance_list():
     assert c.instances == ["https://a.example.com", "https://b.example.com"]
 
 
-def test_apikey_not_in_repr():
-    """FR-13: the key must not leak through an object repr into a traceback."""
-    c = cfg(X_PROFILE_URL="@a", CALLMEBOT_APIKEY="SUPERSECRET")
-    assert "SUPERSECRET" not in repr(c)
-    assert "SUPERSECRET" not in str(c)
+def test_secrets_not_in_repr():
+    """FR-16: neither the token nor the chat id leaks through a repr into a traceback."""
+    c = cfg(X_PROFILE_URL="@a", TELEGRAM_CHAT_ID="987654321")
+    for shown in (repr(c), str(c)):
+        assert TOKEN not in shown and TOKEN.split(":")[1] not in shown
+        assert "987654321" not in shown
 
 
 def test_delivery_credentials_may_be_blank_for_diagnostics():
@@ -92,20 +127,25 @@ def test_delivery_credentials_may_be_blank_for_diagnostics():
 
 
 def test_require_delivery_names_what_is_missing():
-    with pytest.raises(ValueError, match="CALLMEBOT_PHONE and CALLMEBOT_APIKEY"):
+    with pytest.raises(ValueError, match="TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID"):
         Config(X_PROFILE_URL="@a").require_delivery()
-    with pytest.raises(ValueError, match="CALLMEBOT_APIKEY"):
-        Config(X_PROFILE_URL="@a", CALLMEBOT_PHONE="+34600111222").require_delivery()
-    Config(X_PROFILE_URL="@a", CALLMEBOT_PHONE="+34600111222",
-           CALLMEBOT_APIKEY="k").require_delivery()   # must not raise
-
-
-def test_blank_phone_allowed_but_malformed_phone_still_rejected():
-    with pytest.raises(ValueError):
-        Config(X_PROFILE_URL="@a", CALLMEBOT_PHONE="nonsense")
+    with pytest.raises(ValueError, match="TELEGRAM_CHAT_ID"):
+        Config(X_PROFILE_URL="@a", TELEGRAM_BOT_TOKEN=TOKEN).require_delivery()
+    cfg(X_PROFILE_URL="@a").require_delivery()   # must not raise
 
 
 def test_suite_does_not_read_the_operators_dotenv():
     """Regression: a real .env once leaked credentials into tests that assert their
     absence, so the suite failed purely because the machine was configured."""
     assert Config.model_config.get("env_file") is None
+
+
+def test_default_mirrors_are_the_ones_verified_on_2026_10_21():
+    """001 plan A-14: pp.ua and thepixora answer 403; jaydenha and mie.foundation
+    parse 19 posts through the relay's own check-source."""
+    assert Config(X_PROFILE_URL="@a").instances == [
+        "https://nitter.kareem.one",
+        "https://nitter.mie.foundation",
+        "https://nitter.jaydenha.uk",
+        "https://nitter.meowing.monster",
+    ]

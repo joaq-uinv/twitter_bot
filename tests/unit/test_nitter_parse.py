@@ -76,3 +76,16 @@ def test_rejects_feed_for_a_different_account(real_feed):
     from tweet_relay.models import SourceUnavailable
     with pytest.raises(SourceUnavailable):
         parse_feed(real_feed, "someone_else")
+
+
+def test_posts_without_text_are_kept(caplog):
+    """003 US-7: captured 2026-10-21 from nitter.mie.foundation. Three items have an
+    empty title (media or quote only) and used to be dropped as malformed."""
+    import pathlib
+    raw = (pathlib.Path(__file__).parent.parent / "fixtures" / "feed_no_text.xml").read_bytes()
+    with caplog.at_level("WARNING"):
+        tweets = parse_feed(raw, H, expected_host="nitter.mie.foundation")
+    ids = {t.id: t for t in tweets}
+    for post_id in (2112940517311078642, 2112685998547010004, 2112685903697019162):
+        assert ids[post_id].text == ""
+    assert "empty after normalisation" not in caplog.text

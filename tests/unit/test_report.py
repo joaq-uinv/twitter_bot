@@ -100,3 +100,30 @@ def test_minimal_form_delivery_is_flagged_in_the_headline():
         "2026-10-10 13:41:34,100 INFO    tweet_relay.pipeline: delivered tweet_id=2107969700978409979")
     head = render_summary(log, exit_code=0, run_url=RUN, handle=H).splitlines()[0]
     assert head.startswith("## ⚠️") and "1 in minimal form" in head
+
+
+# --- spec 003: paused checks (AC-4.7) ---
+
+PAUSED = """\
+2026-10-21 18:00:00,000 INFO    tweet_relay.sources.nitter_rss: fetched 16 posts from https://nitter.kareem.one
+2026-10-21 18:00:00,100 INFO    tweet_relay.pipeline: check complete: paused, 3 posts waiting
+sent=0 withheld=0 failed=0 bootstrapped=False outage=False paused=True dry_run=False
+"""
+
+
+def test_a_paused_check_says_paused_and_is_not_a_failure():
+    head = render_summary(PAUSED, exit_code=0, run_url=RUN, handle=H).splitlines()[0]
+    assert "⏸" in head and "paused" in head and "❌" not in head
+
+
+def test_a_running_check_with_the_new_field_is_unchanged():
+    log = CLEAN.replace("outage=False\n", "outage=False paused=False dry_run=False\n")
+    head = render_summary(log, exit_code=0, run_url=RUN, handle=H).splitlines()[0]
+    assert head.startswith("## ✅") and "paused" not in head
+
+
+def test_a_forged_paused_flag_in_a_rendered_post_is_ignored():
+    """A-10: post text in a dry run is prefixed "| " and cannot pass for our line."""
+    log = CLEAN + "| sent=0 withheld=0 failed=0 bootstrapped=False outage=False paused=True dry_run=False\n"
+    head = render_summary(log, exit_code=0, run_url=RUN, handle=H).splitlines()[0]
+    assert "paused" not in head

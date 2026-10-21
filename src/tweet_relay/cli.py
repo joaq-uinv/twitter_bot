@@ -19,8 +19,8 @@ from .mirrors.round import run_round
 from .mirrors.tracker import GitHubIssueTracker, NullTracker
 from .models import DeliveryFailed, SourceUnavailable
 from .pipeline import Pipeline
-from .sinks.callmebot import CallMeBotSink
 from .sinks.console import ConsoleSink
+from .sinks.telegram import TelegramBot
 from .sources.nitter_rss import NitterRssSource
 from .state import StateUnwritable, load_state
 
@@ -52,9 +52,18 @@ def _load() -> Config:
 
 
 def _setup(config: Config) -> None:
+    # Backstop redaction for every log record (spec 003 FR-16, plan DD-8).
+    token = config.TELEGRAM_BOT_TOKEN.get_secret_value()
     logging_setup.configure(config.LOG_LEVEL,
-                            secrets=[config.CALLMEBOT_APIKEY.get_secret_value(),
+                            secrets=[token, token.partition(":")[2],
+                                     config.TELEGRAM_CHAT_ID.get_secret_value(),
                                      os.environ.get("GITHUB_TOKEN", "")])
+
+
+def _bot(config: Config) -> TelegramBot:
+    return TelegramBot(config.TELEGRAM_BOT_TOKEN.get_secret_value(),
+                       config.TELEGRAM_CHAT_ID.get_secret_value(),
+                       timeout=config.REQUEST_TIMEOUT_SECONDS)
 
 
 def cmd_check_source(config: Config) -> int:
@@ -83,19 +92,52 @@ def _require_delivery_or_exit(config: Config) -> None:
         raise _config_error(str(exc))
 
 
-def cmd_test_whatsapp(config: Config) -> int:
+def cmd_test_delivery(config: Config) -> int:
+    """Quickstart step 3: one real message, and the one-time confirmation that the
+    configured chat is the operator's own (spec 003 D-4)."""
     _require_delivery_or_exit(config)
-    sink = CallMeBotSink(config, pace_seconds=0)
+    bot = _bot(config)
     try:
-        sink.send(f"🧪 tweet-relay test message for @{config.handle}. "
-                  "If you can read this, delivery works.")
+        if not bot.chat_is_private():
+            print("✗ The configured chat is not a private chat (it is a group or channel)."
+                  "\nRun find-chat-id again and use your own chat's id.", file=sys.stderr)
+            return 1
+        bot.send(f"🧪 tweet-relay test message for @{config.handle}. "
+                 "If you can read this, delivery works.")
     except DeliveryFailed as exc:
         print(f"✗ Delivery failed: {exc}", file=sys.stderr)
-        print("\nCheck CALLMEBOT_PHONE (E.164, e.g. +34600111222) and CALLMEBOT_APIKEY.\n"
-              "To get a key: WhatsApp +34 644 51 95 23 with\n"
-              "  I allow callmebot to send me messages", file=sys.stderr)
+        print("\nCheck TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, and that you have sent "
+              "the bot at least one message.", file=sys.stderr)
         return 1
     print("✓ Sent. Check your phone.")
+    return 0
+
+
+def cmd_find_chat_id(config: Config) -> int:
+    """Quickstart step 2: the private chats that wrote to the bot in the last 24 h.
+
+    Reads from offset 0, which confirms nothing, so the relay still sees every message.
+    Prints ids only, never message text or the token.
+    """
+    if not config.TELEGRAM_BOT_TOKEN.get_secret_value():
+        raise _config_error("TELEGRAM_BOT_TOKEN must be set first (quickstart step 1).")
+    try:
+        inbox = TelegramBot(config.TELEGRAM_BOT_TOKEN.get_secret_value(), "",
+                            timeout=config.REQUEST_TIMEOUT_SECONDS).read(0)
+    except Exception as exc:
+        print(f"✗ Could not read the bot's messages: {exc}", file=sys.stderr)
+        return 1
+    counts: dict[int, int] = {}
+    for m in inbox.messages:
+        if m.chat_type == "private":
+            counts[m.chat_id] = counts.get(m.chat_id, 0) + 1
+    if not counts:
+        print("No private chat has written to the bot in the last 24 h. "
+              "Send it any message, then run this again.")
+        return 1
+    for chat_id, n in counts.items():
+        print(f"chat id {chat_id}: {n} message(s)")
+    print("\nSave yours with: gh secret set TELEGRAM_CHAT_ID")
     return 0
 
 
@@ -103,6 +145,8 @@ def cmd_run(config: Config, once: bool, dry_run: bool) -> int:
     if not dry_run:
         _require_delivery_or_exit(config)
         return _run(config, once, dry_run)
+    # The temporary copy also holds the command offset and the pause, so a dry run
+    # shows the replies it would send without confirming or applying anything.
     # A dry run works on a throwaway copy of the delivery history (plan A-10). The
     # pipeline marks rendered posts as seen; against the real history, the documented
     # "sends nothing" check would make every pending post undeliverable.
@@ -115,8 +159,12 @@ def cmd_run(config: Config, once: bool, dry_run: bool) -> int:
 
 def _run(config: Config, once: bool, dry_run: bool) -> int:
     source = NitterRssSource(config)
-    sink = ConsoleSink() if dry_run else CallMeBotSink(config)
-    pipeline = Pipeline(config, source, sink)
+    bot = _bot(config) if config.TELEGRAM_BOT_TOKEN.get_secret_value() else None
+    sink = ConsoleSink() if dry_run else bot
+    pipeline = Pipeline(config, source, sink, inbox=bot,
+                        operator_chat_id=config.chat_id,
+                        mirror_latest_path=config.MIRROR_LATEST_PATH,
+                        status_page_url=config.STATUS_PAGE_URL)
 
     if once:
         try:
@@ -125,7 +173,8 @@ def _run(config: Config, once: bool, dry_run: bool) -> int:
             print(f"Cannot start:\n\n{exc}", file=sys.stderr)
             return 2
         print(f"sent={result.sent} withheld={result.withheld} failed={result.failed} "
-              f"bootstrapped={result.bootstrapped} outage={result.outage} dry_run={dry_run}")
+              f"bootstrapped={result.bootstrapped} outage={result.outage} "
+              f"paused={result.paused} dry_run={dry_run}")
         # Non-zero on a delivery failure too: a scheduler's failure notice is the one
         # alarm that does not travel through the delivery channel (plan A-8, §7).
         return 1 if result.outage or result.failed else 0
@@ -148,7 +197,7 @@ def _warning_tracker():
 def cmd_probe_mirrors(config: Config, data: str, site_out: str) -> int:
     """One mirror-health round (spec 002). Exit 0 ok, 3 at risk, 1 check broken (DD-6).
 
-    Read-only with respect to delivery: needs no CallMeBot credentials (FR-19).
+    Read-only with respect to delivery: needs no delivery credentials (FR-19).
     """
     import json
     from pathlib import Path
@@ -205,7 +254,7 @@ def cmd_healthcheck(config: Config) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tweet-relay",
-                                     description="Relay new X posts to WhatsApp.")
+                                     description="Relay new X posts to a bot chat.")
     sub = parser.add_subparsers(dest="command")
 
     run = sub.add_parser("run", help="run the relay (default)")
@@ -213,7 +262,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--dry-run", action="store_true",
                      help="print messages instead of sending them")
     sub.add_parser("check-source", help="show which mirror answers and what it parses")
-    sub.add_parser("test-whatsapp", help="send one real test message")
+    sub.add_parser("test-delivery", help="send one real test message to the bot chat")
+    sub.add_parser("find-chat-id", help="list the private chats that wrote to the bot")
     sub.add_parser("healthcheck", help="exit non-zero if checks have stalled")
     pm = sub.add_parser("probe-mirrors", help="probe every mirror and publish status (spec 002)")
     pm.add_argument("--data", required=True, help="directory holding history.jsonl/latest.json")
@@ -235,8 +285,10 @@ def main(argv: list[str] | None = None) -> int:
     match args.command:
         case "check-source":
             return cmd_check_source(config)
-        case "test-whatsapp":
-            return cmd_test_whatsapp(config)
+        case "test-delivery":
+            return cmd_test_delivery(config)
+        case "find-chat-id":
+            return cmd_find_chat_id(config)
         case "healthcheck":
             return cmd_healthcheck(config)
         case "probe-mirrors":

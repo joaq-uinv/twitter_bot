@@ -20,6 +20,7 @@ import re
 _LOG = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} "
 _RESULT = re.compile(r"^sent=(\d+) withheld=(\d+) failed=(\d+) "
                      r"bootstrapped=(True|False) outage=(True|False)"
+                     r"(?: paused=(True|False))?"          # spec 003; absent in older runs
                      r"(?: dry_run=(True|False))?$", re.M)
 _MIRROR = re.compile(_LOG + r"INFO\s+tweet_relay\.sources\.nitter_rss: "
                      r"fetched (\d+) posts from (https://[\w.-]+)$", re.M)
@@ -51,7 +52,7 @@ def render_summary(log: str, exit_code: int, run_url: str | None, handle: str) -
     if result is None:
         headline = f"## ❌ tweet-relay: check did not complete (exit {exit_code})"
     else:
-        sent, withheld, failed, bootstrapped, outage, dry = result.groups()
+        sent, withheld, failed, bootstrapped, outage, paused, dry = result.groups()
         dry_run = dry == "True"
         ok = exit_code == 0 and failed == "0" and outage == "False"
         icon, verdict = ("✅", "ok") if ok else ("❌", "failed")
@@ -59,6 +60,10 @@ def render_summary(log: str, exit_code: int, run_url: str | None, handle: str) -
             icon = "⚠️"            # delivered, but some post text did not get through (E-21)
         if outage == "True":
             verdict = "no mirror reachable"
+        elif paused == "True" and ok:
+            # Spec 003 AC-4.7: a check that sent nothing on purpose is not a quiet
+            # account and not a failure.
+            icon, verdict = "⏸", "paused, nothing delivered"
         if dry_run:
             # Nothing was sent: never phrase a dry run as a delivery (001 FR-12).
             headline = (f"## {icon} tweet-relay: dry run, {verdict}, would send {sent}, "

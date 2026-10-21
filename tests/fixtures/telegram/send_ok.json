@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "result": {
+    "message_id": 42,
+    "date": 1792000000,
+    "chat": {
+      "id": 111222333,
+      "type": "private",
+      "first_name": "Op"
+    },
+    "text": "hello"
+  }
+}

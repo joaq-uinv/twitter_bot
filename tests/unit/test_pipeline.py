@@ -283,7 +283,7 @@ class RefusingSink(RecordingSink):
         super().__init__()
         self.poison, self.refuse_minimal, self.plain_failure = poison, refuse_minimal, plain_failure
 
-    def send(self, message):
+    def send(self, message, *, preview_url=None):
         from tweet_relay.models import DeliveryFailed, MessageRejected
         self.attempts += 1
         minimal = "(its text could not be delivered)" in message
@@ -292,6 +292,7 @@ class RefusingSink(RecordingSink):
                 raise DeliveryFailed("channel down")
             raise MessageRejected("rejected with HTTP 403")
         self.sent.append(message)
+        self.previews.append(preview_url)
 
 
 def _with_pending(config, sink, *new):

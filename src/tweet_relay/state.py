@@ -26,16 +26,25 @@ class StateUnwritable(Exception):
 
 
 class RelayState:
-    __slots__ = ("handle", "seen_ids", "bootstrapped", "outage_notified", "last_success")
+    __slots__ = ("handle", "seen_ids", "bootstrapped", "outage_notified", "last_success",
+                 "paused_since", "update_offset", "announced", "last_check")
 
     def __init__(self, handle: str, seen_ids: list[int] | None = None,
                  bootstrapped: bool = False, outage_notified: bool = False,
-                 last_success: datetime | None = None):
+                 last_success: datetime | None = None,
+                 paused_since: datetime | None = None, update_offset: int = 0,
+                 announced: bool = False, last_check: tuple[datetime, int] | None = None):
         self.handle = handle
         self.seen_ids = list(seen_ids or [])
         self.bootstrapped = bootstrapped
         self.outage_notified = outage_notified
         self.last_success = last_success
+        # Spec 003 (data-model.md): the pause, the next command to read, the one-time
+        # switch announcement, and what the previous check delivered (for /status).
+        self.paused_since = paused_since
+        self.update_offset = update_offset
+        self.announced = announced
+        self.last_check = last_check
 
     def is_new(self, post_id: int) -> bool:
         return post_id not in set(self.seen_ids)
@@ -53,6 +62,11 @@ class RelayState:
             "bootstrapped": self.bootstrapped,
             "outage_notified": self.outage_notified,
             "last_success": self.last_success.isoformat() if self.last_success else None,
+            "paused_since": self.paused_since.isoformat() if self.paused_since else None,
+            "update_offset": self.update_offset,
+            "announced": self.announced,
+            "last_check": ({"at": self.last_check[0].isoformat(), "sent": self.last_check[1]}
+                           if self.last_check else None),
         }
 
 
@@ -104,7 +118,51 @@ def load_state(path: str | Path, handle: str) -> RelayState:
         bootstrapped=bool(raw.get("bootstrapped", False)),
         outage_notified=bool(raw.get("outage_notified", False)),
         last_success=parsed_last,
+        paused_since=_field(raw, "paused_since", None, _aware),
+        update_offset=_field(raw, "update_offset", 0, _offset),
+        announced=_field(raw, "announced", False, _strict_bool),
+        last_check=_field(raw, "last_check", None, _last_check),
     )
+
+
+# Spec 003 fields. Absent (a file from before 003) means the default, silently. Present
+# but invalid means the default too, logged at ERROR. Each default is the safe
+# direction: a lost pause delivers rather than hides; offset 0 can only re-read the
+# chat's last 24 h of commands, which are idempotent apart from repeated replies.
+
+def _field(raw: dict, name: str, default, check):
+    if raw.get(name) is None:
+        return default
+    try:
+        return check(raw[name])
+    except (TypeError, ValueError, KeyError):
+        log.error("state field %s is invalid; using its default", name)
+        return default
+
+
+def _aware(v) -> datetime:
+    d = datetime.fromisoformat(v)
+    if d.tzinfo is None:
+        raise ValueError("naive timestamp")
+    return d
+
+
+def _offset(v) -> int:
+    if not isinstance(v, int) or isinstance(v, bool) or v < 0:
+        raise ValueError("offset must be a non-negative int")
+    return v
+
+
+def _strict_bool(v) -> bool:
+    if not isinstance(v, bool):
+        raise ValueError("not a bool")
+    return v
+
+
+def _last_check(v) -> tuple[datetime, int]:
+    if not isinstance(v, dict):
+        raise ValueError("not an object")
+    return _aware(v["at"]), _offset(v["sent"])
 
 
 def save_state(path: str | Path, state: RelayState, _fail_after_write: bool = False) -> None:

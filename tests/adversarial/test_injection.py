@@ -1,66 +1,80 @@
-"""Post text reaching the outbound request. The key travels in that request (FR-13)."""
-import httpx, logging, pytest, respx
-from urllib.parse import parse_qs, urlparse
-from tweet_relay.sinks.callmebot import CallMeBotSink
+"""Post text reaching the outbound request, which carries the bot token (FR-16, E-11).
 
-API = "https://api.callmebot.com/whatsapp.php"
-SECRET = "test-key-do-not-log"
+The text is one JSON string field, never interpolated into the URL, and sent without
+any formatting mode, so nothing a post says can add a field, change the chat, change
+the endpoint, or turn on markup.
+"""
+import json
+import logging
+from datetime import datetime, timezone
+
+import httpx
+import pytest
+import respx
+
+from tweet_relay.sinks.telegram import TelegramBot
+
+TOKEN = "123456789:TEST-token-do-not-log-AAAAAAAAAAAAAAAAAA"
+CHAT = "111222333"
+SEND = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+OK = httpx.Response(200, json={"ok": True, "result": {"message_id": 1}})
 
 PAYLOADS = [
-    "&apikey=ATTACKER",
-    "&phone=%2B19999999999",
-    "?apikey=x&text=y",
-    "#fragment&apikey=z",
+    '", "chat_id": "666", "parse_mode": "HTML',
+    '{"chat_id": 666}',
+    "&chat_id=666",
+    "?parse_mode=HTML",
+    "/../bot000:OTHER/sendMessage",
     "a\nb\rc",
     "\x00null",
-    "%26apikey%3Dencoded",
+    "<b>bold</b> *markdown* [link](https://evil.example)",
     "' OR 1=1 --",
-    "<script>alert(1)</script>",
     "🎉" * 50,
-    "../../etc/passwd",
+    "\\u0000 escaped",
     "text&" + "a=b&" * 50,
 ]
 
 
-@respx.mock
-@pytest.mark.parametrize("payload", PAYLOADS)
-def test_text_cannot_add_or_override_parameters(config, payload):
-    """E-11: whatever the post says, the request must carry exactly three params."""
-    route = respx.get(API).mock(httpx.Response(200, text="Message queued"))
-    CallMeBotSink(config, pace_seconds=0).send(payload)
-
-    q = parse_qs(urlparse(str(route.calls[0].request.url)).query, keep_blank_values=True)
-    assert set(q) == {"phone", "text", "apikey"}
-    assert len(q["apikey"]) == 1 and q["apikey"] == [SECRET]
-    assert len(q["phone"]) == 1 and q["phone"] == ["+34600111222"]
-    assert len(q["text"]) == 1
+def bot():
+    return TelegramBot(TOKEN, CHAT, timeout=1, sleep=lambda s: None, monotonic=lambda: 0.0)
 
 
 @respx.mock
 @pytest.mark.parametrize("payload", PAYLOADS)
-def test_payloads_never_leak_the_key_into_logs(config, caplog, payload):
+def test_text_cannot_add_fields_change_the_chat_or_the_endpoint(payload):
+    route = respx.post(SEND).mock(OK)
+    bot().send(payload, preview_url="https://fxtwitter.com/a/status/1")
+    request = route.calls[0].request
+    assert str(request.url) == SEND
+    body = json.loads(request.content)
+    assert set(body) == {"chat_id", "text", "link_preview_options"}
+    assert body["chat_id"] == CHAT and body["text"] == payload
+    assert "parse_mode" not in body
+
+
+@respx.mock
+@pytest.mark.parametrize("payload", PAYLOADS)
+def test_payloads_never_leak_the_token_into_logs(caplog, payload):
     from tweet_relay.logging_setup import configure
-    configure("DEBUG", secrets=[SECRET])
-    respx.get(API).mock(httpx.Response(200, text="Message queued"))
+    configure("DEBUG", secrets=[TOKEN])
+    respx.post(SEND).mock(OK)
     with caplog.at_level(logging.DEBUG):
-        CallMeBotSink(config, pace_seconds=0).send(payload)
-    assert SECRET not in caplog.text
+        bot().send(payload)
+    assert TOKEN not in caplog.text and TOKEN.split(":")[1] not in caplog.text
 
 
 @respx.mock
-def test_full_pipeline_message_cannot_forge_parameters(config):
+def test_full_pipeline_message_cannot_forge_fields():
     """The realistic path: hostile post text -> formatter -> sink."""
     from tweet_relay.formatter import render
     from tweet_relay.models import Tweet, TweetKind
-    from datetime import datetime, timezone
 
-    route = respx.get(API).mock(httpx.Response(200, text="Message queued"))
+    route = respx.post(SEND).mock(OK)
     t = Tweet(id=1, author="santtiagom_",
-              text="check this &apikey=STOLEN&phone=+1999 out",
+              text='check this ", "chat_id": "666" out <b>x</b>',
               published_at=datetime(2026, 9, 15, tzinfo=timezone.utc),
               kind=TweetKind.ORIGINAL)
-    CallMeBotSink(config, pace_seconds=0).send(render(t, "santtiagom_"))
-
-    q = parse_qs(urlparse(str(route.calls[0].request.url)).query)
-    assert q["apikey"] == [SECRET] and q["phone"] == ["+34600111222"]
-    assert "STOLEN" in q["text"][0]        # present as literal text, harmless
+    bot().send(render(t, "santtiagom_"), preview_url=t.preview_url)
+    body = json.loads(route.calls[0].request.content)
+    assert body["chat_id"] == CHAT and '"chat_id": "666"' in body["text"]   # literal, harmless
+    assert body["link_preview_options"] == {"url": "https://fxtwitter.com/santtiagom_/status/1"}

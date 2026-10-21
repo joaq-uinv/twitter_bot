@@ -1,4 +1,4 @@
-"""Renders a validated post as WhatsApp message text.
+"""Renders a validated post as chat message text.
 
 The rendered string is passed to the sink as opaque data and encoded there; nothing
 in here can affect the structure of the outbound request (FR-13, E-11).
@@ -17,6 +17,13 @@ _MARKERS = {
 
 
 def render(tweet: Tweet, monitored_handle: str) -> str:
+    if not tweet.text:
+        # Spec 003 US-7: fixed wording by kind, so a repost is never shown as the
+        # account's own post; the preview card carries the media.
+        lead = _MINIMAL_LEADS[tweet.kind].format(monitored=monitored_handle,
+                                                 author=tweet.author)
+        return f"{lead} (no text)\n\n{tweet.url}"
+
     body = tweet.text
     if len(body) > MAX_TEXT_CHARS:
         # Truncate the body only. The link is appended afterwards so it always
@@ -47,6 +54,8 @@ def render_minimal(tweet: Tweet, monitored_handle: str) -> str:
     is never presented as the account's own post.
     """
     lead = _MINIMAL_LEADS[tweet.kind].format(monitored=monitored_handle, author=tweet.author)
+    if not tweet.text:
+        return f"{lead} (no text): {tweet.url}"      # it never had any (spec 003 US-7)
     return f"{lead} (its text could not be delivered): {tweet.url}"
 
 
@@ -62,3 +71,9 @@ def render_outage(handle: str, detail: str) -> str:
 
 def render_withheld(count: int) -> str:
     return f"…and {count} more not sent yet — they will arrive on the next checks."
+
+
+def render_announcement(handle: str) -> str:
+    """Spec 003 D-2: sent once, on the first check through the new channel."""
+    return (f"✅ Relay now delivers here for @{handle}.\n\n"
+            "Posts arrive in this chat from now on. Send /help for commands.")

@@ -1,18 +1,21 @@
 # tweet-relay
 
-Relays new posts from an X profile to your own WhatsApp. Free to run, everything in
-Docker, built Spec-Driven.
+Relays new posts from an X profile to a private Telegram chat with your own bot, with
+link previews, and lets you send it `/status`, `/pause`, `/resume` and `/help`. Free
+to run, everything in Docker, built Spec-Driven.
 
 ```bash
-cp .env.example .env    # set CALLMEBOT_PHONE, CALLMEBOT_APIKEY, HOST_UID, HOST_GID
+cp .env.example .env    # set TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, HOST_UID, HOST_GID
 docker compose build
 docker compose run --rm relay check-source     # verify retrieval works
-docker compose run --rm relay test-whatsapp    # verify delivery works
-docker compose up -d
+docker compose run --rm relay find-chat-id     # after messaging your bot once
+docker compose run --rm relay test-delivery    # verify delivery works
 ```
 
-Full setup, including how to get a CallMeBot key in a minute:
-[`specs/001-tweet-to-whatsapp/quickstart.md`](specs/001-tweet-to-whatsapp/quickstart.md).
+Full setup, including creating the bot:
+[`specs/003-bot-chat-delivery/quickstart.md`](specs/003-bot-chat-delivery/quickstart.md).
+Until October 2026 delivery went to WhatsApp through CallMeBot; its free quota ran out,
+so spec 003 replaced it.
 
 ## What this is
 
@@ -29,9 +32,11 @@ Read `CLAUDE.md` first if you are picking this up.
 
 | Path | What's there |
 |---|---|
-| `specs/001-tweet-to-whatsapp/spec.md` | Behaviour and acceptance criteria — no tech named |
-| `specs/001-tweet-to-whatsapp/plan.md` | Design decisions, rejected alternatives, and 5 amendments recording where reality corrected the plan |
+| `specs/001-tweet-to-whatsapp/spec.md` | The relay: behaviour and acceptance criteria — no tech named |
+| `specs/001-tweet-to-whatsapp/plan.md` | Design decisions, rejected alternatives, and the amendments recording where reality corrected the plan |
 | `specs/001-tweet-to-whatsapp/research.md` | Live-probed evidence — which mirrors actually work, as of when |
+| `specs/002-mirror-health/` | Mirror health checks and the public status page |
+| `specs/003-bot-chat-delivery/` | The bot chat: delivery, preview cards, commands, pause |
 | `.specify/memory/constitution.md` | The 8 principles every change is checked against |
 | `.claude/skills/speckit-*` | The skills that drive spec → plan → tasks → implement |
 | `docs/tweet-relay.architecture.html` | Interactive architecture diagram, with guided views for failover and dedup |
@@ -39,7 +44,7 @@ Read `CLAUDE.md` first if you are picking this up.
 ## How it works
 
 ```
-scheduler → source (4 mirrors, failover) → filter → sort → cap → sink (WhatsApp)
+scheduler → source (4 mirrors, failover) → commands → filter → sort → cap → sink (bot chat)
                                               ↕
                                      state (seen-ID set)
 ```
@@ -48,7 +53,8 @@ An interactive version, with guided views for the failover and dedup cases, is a
 [`docs/tweet-relay.architecture.html`](docs/tweet-relay.architecture.html).
 
 Retrieval uses public mirrors rather than the X API, which has had no free tier since
-February 2026. Delivery uses CallMeBot, which is free and single-recipient by design.
+February 2026. Delivery uses a Telegram bot in a private chat; preview cards come from
+fxtwitter, while the link in each message stays the post's own `x.com` address.
 
 ## The one thing to know before changing anything
 
@@ -63,13 +69,14 @@ hypothesis hunt for counterexamples. Full evidence in
 ## Tests
 
 ```bash
-docker compose run --rm --entrypoint python relay -m pytest                      # 351 tests, no network
+docker compose run --rm --entrypoint python relay -m pytest                      # 672 tests, no network
 docker compose run --rm --entrypoint python relay -m pytest tests/adversarial -v # hostile input
 docker compose run --rm --entrypoint python relay -m pytest -m live              # real mirrors (opt-in)
+TELEGRAM_LIVE=1 docker compose run --rm -e TELEGRAM_LIVE --entrypoint python relay -m pytest -m live -k telegram  # sends one real message
 ```
 
 The adversarial suite exists because the relay parses XML from volunteer-run third
-parties and puts the result into an outbound URL carrying your API key. It covers XXE
+parties and sends the result in a request whose URL carries your bot token. It covers XXE
 and entity-expansion attacks, forged links and identifiers, parameter injection, SSRF
 via configuration, state corruption, concurrent writers, and network failure.
 
@@ -95,8 +102,8 @@ tier at all; Fly.io's free tier is gone).
 Set two repository secrets before enabling it:
 
 ```bash
-gh secret set CALLMEBOT_PHONE
-gh secret set CALLMEBOT_APIKEY
+gh secret set TELEGRAM_BOT_TOKEN
+gh secret set TELEGRAM_CHAT_ID
 ```
 
 Then verify with a manual dry run before trusting the schedule:
@@ -108,7 +115,8 @@ gh run watch
 
 `docker compose up -d` still works unchanged for local development — it just isn't
 what's deployed. Don't run both against the same account at once: each keeps its own
-copy of `seen.json`, so a post published after they diverge gets delivered twice.
+copy of `seen.json`, so a post published after they diverge gets delivered twice, and
+whichever runs first consumes your bot commands. Locally, prefer `--dry-run`.
 
 ## Caveats
 
@@ -120,4 +128,5 @@ copy of `seen.json`, so a post published after they diverge gets delivered twice
   will need to refresh the list — the relay messages you when that happens.
 - No delivery while the machine is off. Posts still visible when it restarts are
   delivered; older ones are gone.
-- CallMeBot allows roughly 80 messages/day.
+- Commands are read once per check, so replies arrive at the next scheduled run:
+  minutes, sometimes hours when GitHub delays the schedule.

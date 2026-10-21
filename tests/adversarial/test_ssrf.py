@@ -2,8 +2,7 @@
 import pytest
 from tweet_relay.config import Config, extract_handle
 
-BASE = dict(X_PROFILE_URL="@santtiagom_", CALLMEBOT_PHONE="+34600111222",
-            CALLMEBOT_APIKEY="k")
+BASE = dict(X_PROFILE_URL="@santtiagom_")
 
 
 @pytest.mark.parametrize("target", [

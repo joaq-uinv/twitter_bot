@@ -29,16 +29,57 @@ class FakeSource:
 class RecordingSink:
     name = "recording"
 
-    def __init__(self, fail_on: set[int] | None = None):
+    def __init__(self, fail_on: set[int] | None = None, private: bool = True):
         self.sent: list[str] = []
+        self.previews: list[str | None] = []   # spec 003: the card URL of each sent message
         self.fail_on = fail_on or set()      # 1-based send ordinals that must fail
         self.attempts = 0
+        self.private = private
+        self.chat_checks = 0
 
-    def send(self, message: str) -> None:
+    def send(self, message: str, *, preview_url: str | None = None) -> None:
         self.attempts += 1
         if self.attempts in self.fail_on:
             raise DeliveryFailed(f"simulated failure on send #{self.attempts}")
         self.sent.append(message)
+        self.previews.append(preview_url)
+
+    def chat_is_private(self) -> bool:
+        self.chat_checks += 1
+        return self.private
+
+
+class ScriptedInbox:
+    """Spec 003 contract command-inbox. Returns `batches` in turn (then empty ones), or
+    raises `error`. Records the offsets it was asked for."""
+
+    def __init__(self, *batches, error: Exception | None = None):
+        self.batches = list(batches)
+        self.error = error
+        self.offsets: list[int] = []
+
+    def read(self, offset: int):
+        from tweet_relay.commands import InboxBatch
+        self.offsets.append(offset)
+        if self.error:
+            raise self.error
+        if self.batches:
+            return self.batches.pop(0)
+        return InboxBatch(messages=[], next_offset=offset)
+
+
+OPERATOR = 111222333
+
+
+def msg(update_id: int, text: str, chat_id: int = OPERATOR, chat_type: str = "private"):
+    from tweet_relay.commands import IncomingMessage
+    return IncomingMessage(update_id=update_id, chat_id=chat_id, chat_type=chat_type, text=text)
+
+
+def batch(*messages, next_offset: int | None = None):
+    from tweet_relay.commands import InboxBatch
+    last = max((m.update_id for m in messages), default=0)
+    return InboxBatch(messages=list(messages), next_offset=next_offset or last + 1)
 
 
 # ---------- spec 002 mirror-health doubles ----------
