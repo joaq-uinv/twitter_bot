@@ -69,7 +69,7 @@ hypothesis hunt for counterexamples. Full evidence in
 ## Tests
 
 ```bash
-docker compose run --rm --entrypoint python relay -m pytest                      # 671 tests, no network
+docker compose run --rm --entrypoint python relay -m pytest                      # 672 tests, no network
 docker compose run --rm --entrypoint python relay -m pytest tests/adversarial -v # hostile input
 docker compose run --rm --entrypoint python relay -m pytest -m live              # real mirrors (opt-in)
 TELEGRAM_LIVE=1 docker compose run --rm -e TELEGRAM_LIVE --entrypoint python relay -m pytest -m live -k telegram  # sends one real message

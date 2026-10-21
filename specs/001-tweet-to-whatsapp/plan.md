@@ -516,3 +516,21 @@ historical from here; `MessageSink` is now specified by
 ordering, cap, outage notice, minimal-form retry) is unchanged. Spec 003 also stops
 dropping posts that have no text of their own (003 US-7), changing this spec's
 treatment of them as malformed.
+
+## Amendment A-14 — second mirror swap (2026-10-21)
+
+The spec 002 mirror check reported AT RISK (1 of 4 in-use healthy) on 2026-10-21. Probed
+twice each from the operator's machine at about 19:40 UTC, then through the relay's own
+`check-source`:
+
+| Mirror | Result | Decision |
+|---|---|---|
+| `nitter.kareem.one` | 200, 19 posts | keep |
+| `nitter.meowing.monster` | 200, 19 posts (502 earlier the same day) | keep, last |
+| `nitter.pp.ua` | 403 both times | **out** |
+| `shitter.thepixora.com` | 403 both times | **out** |
+| `nitter.jaydenha.uk` | 200, 19 posts (an HTML access queue on 2026-10-10) | **in** |
+| `nitter.mie.foundation` | 200, 19 posts; first seen as a 002 candidate | **in** |
+
+This is the swap spec 002 was built to make easy: both replacements came from its
+candidate list.

@@ -138,3 +138,14 @@ def test_suite_does_not_read_the_operators_dotenv():
     """Regression: a real .env once leaked credentials into tests that assert their
     absence, so the suite failed purely because the machine was configured."""
     assert Config.model_config.get("env_file") is None
+
+
+def test_default_mirrors_are_the_ones_verified_on_2026_10_21():
+    """001 plan A-14: pp.ua and thepixora answer 403; jaydenha and mie.foundation
+    parse 19 posts through the relay's own check-source."""
+    assert Config(X_PROFILE_URL="@a").instances == [
+        "https://nitter.kareem.one",
+        "https://nitter.mie.foundation",
+        "https://nitter.jaydenha.uk",
+        "https://nitter.meowing.monster",
+    ]

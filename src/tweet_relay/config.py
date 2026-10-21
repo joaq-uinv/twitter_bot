@@ -14,11 +14,13 @@ from .models import HANDLE_RE
 # Verified working 2026-09-15 (research.md R-1). Volunteer-run; expect churn.
 # Re-verified 2026-10-10 (specs/002-mirror-health/research.md R-2): netbub now answers
 # with a bot challenge and jaydenha with an HTML access queue, so both were replaced.
-# Ordered fastest first; meowing.monster answered in 12 s against a 15 s timeout.
+# Re-verified 2026-10-21 (001 plan A-14): pp.ua and thepixora now answer 403, so they
+# were replaced by jaydenha (out of its access queue again) and mie.foundation, both
+# found by the spec 002 mirror check. meowing.monster stays last: historically slowest.
 DEFAULT_INSTANCES = [
     "https://nitter.kareem.one",
-    "https://nitter.pp.ua",
-    "https://shitter.thepixora.com",
+    "https://nitter.mie.foundation",
+    "https://nitter.jaydenha.uk",
     "https://nitter.meowing.monster",
 ]
 

@@ -1,6 +1,6 @@
 """Live tests. Excluded from the default run (§5); opt in with `pytest -m live`."""
 import pytest
-from tweet_relay.config import Config
+from tweet_relay.config import DEFAULT_INSTANCES, Config
 from tweet_relay.models import SourceUnavailable
 from tweet_relay.sources.nitter_rss import NitterRssSource
 
@@ -19,12 +19,7 @@ def test_at_least_one_real_mirror_serves_the_account():
     assert [t.published_at for t in tweets] == sorted(t.published_at for t in tweets)
 
 
-@pytest.mark.parametrize("instance", [
-    "https://nitter.kareem.one",
-    "https://nitter.meowing.monster",
-    "https://nitter.pp.ua",
-    "https://shitter.thepixora.com",
-])
+@pytest.mark.parametrize("instance", DEFAULT_INSTANCES)   # never drifts from config
 def test_each_pinned_mirror_individually(instance):
     """Reports which pinned mirrors have died, rather than hiding it behind failover."""
     cfg = live_config(NITTER_INSTANCES=instance)
