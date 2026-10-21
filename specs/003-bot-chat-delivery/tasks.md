@@ -357,7 +357,7 @@ doubles in `tests/doubles.py`.
   account's `/pause` has no effect.
 - Covers: Success criteria, AC-2.1..AC-2.3, US-3..US-6 live.
 
-**T049 Remove the CallMeBot secrets** (quickstart step 7), only after T048.
+**T049 Remove the CallMeBot secrets** ✅ 2026-10-21 (quickstart step 7), only after T048.
 - Verify: `gh secret list` shows no `CALLMEBOT_*`.
 - Covers: FR-3, plan DD-14.
 
@@ -421,6 +421,10 @@ doubles in `tests/doubles.py`.
 ## Manual verification log
 
 *(Tasks record results here, with dates.)*
+
+- 2026-10-21, T049: `CALLMEBOT_PHONE` and `CALLMEBOT_APIKEY` deleted at the operator's
+  request, after T048 delivered. `gh secret list` now shows only the two Healthchecks
+  URLs and the two Telegram secrets.
 
 - 2026-10-21, T046–T048 (live, after merge `168a371`, mirror swap 001 A-14 included):
   - T046: secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set; `test-delivery`
