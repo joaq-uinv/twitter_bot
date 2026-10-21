@@ -314,7 +314,7 @@ REST API faked by respx.
 - Verify: `actionlint` is clean, and a dry review against plan DD-6 and DD-7.
 - Covers: FR-1, FR-8, FR-9, AC-1.4, AC-1.5, AC-1.6, AC-3.6, E-19.
 
-**T036 Operator setup** (quickstart step 1). Not automatable: it needs your accounts.
+**T036 Operator setup** ✅ 2026-10-21 (quickstart step 1). Not automatable: it needs your accounts.
 - Enable Pages with source "GitHub Actions".
 - Create the second Healthchecks check (period 6 h, grace 18 h).
 - `gh secret set HEALTHCHECKS_MIRRORS_PING_URL`.
@@ -334,7 +334,7 @@ REST API faked by respx.
   is green.
 - Covers: process (CLAUDE.md).
 
-**T039 Live run** (quickstart step 6), after merge.
+**T039 Live run** ✅ 2026-10-21 (quickstart step 6), after merge.
 - `gh workflow run mirrors.yml`.
 - The page is reachable without signing in at `https://joaq-uinv.github.io/twitter_bot/`.
 - `mirror-status` has exactly 1 commit.
@@ -399,6 +399,19 @@ Every FR-1..19, AC-1.1..5.4 and E-1..22 maps to at least one task.
 ## Manual verification log
 
 *(T034, T037 and T039 record their results here, with dates.)*
+
+- 2026-10-21, T039 ([run 39628969472](https://github.com/joaq-uinv/twitter_bot/actions/runs/39628969472)),
+  after merge `860bba1`. A first run (39625613154) never probed: the base-image pull
+  from ECR Public got `429 Data limit exceeded` (001 plan A-12, image moved to
+  `mirror.gcr.io`). On the rerun: probe exit 3 (`cause=at_risk`), so the run failed
+  as designed (D-3). 1 of 4 in-use healthy: `kareem.one` healthy; `pp.ua`,
+  `thepixora` and `meowing` refused_answer. 10 candidates accepted, 0 rejected.
+  `publish` succeeded: the page returns 200 without signing in, `status.json`
+  shows AT RISK, `mirror-status` has exactly 1 commit, and the Healthchecks step
+  sent `/fail` with no warning. No soft warnings yet (they need 24 h of results).
+- 2026-10-21, T036: Pages enabled (`build_type: workflow`). The secret was first
+  saved as `HEALTHCHECKS_MIRRORS_PING_UR`; it was renamed to the correct name before
+  T039.
 
 - 2026-10-12, T038: the first review attempt was cut off by a safety filter, with no
   output. On re-run the verdict was "with fixes": 0 critical, 6 important, 8 minor.
