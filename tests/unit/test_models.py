@@ -44,11 +44,27 @@ def test_text_strips_control_and_bidi_but_keeps_newlines_and_emoji():
     assert "\n" in t.text and "🎉" in t.text
 
 
-def test_rejects_empty_text_after_normalisation():
-    with pytest.raises(ValueError):
-        make(text="\x00‮")
+@pytest.mark.parametrize("raw", ["", "   ", "\x00‮", "\u200b\u202e"])
+def test_text_may_be_empty_after_normalisation(raw):
+    """003 US-7, FR-19: a post with no text of its own is a valid post."""
+    assert make(text=raw).text == ""
+
+
+def test_empty_text_does_not_relax_other_invariants():
+    """003 AC-7.3: only "no text" changed."""
+    for bad in (dict(id=0), dict(author="has space"), dict(published_at=datetime(2026, 9, 15))):
+        with pytest.raises(ValueError):
+            make(text="", **bad)
 
 
 def test_exceptions_exist():
     assert issubclass(SourceUnavailable, Exception)
     assert issubclass(DeliveryFailed, Exception)
+
+
+def test_preview_url_is_built_from_author_and_id_only():
+    """003 FR-2, plan DD-4: the card's go-between address comes from validated parts,
+    so nothing a feed says can point the preview anywhere else."""
+    assert make().preview_url == "https://fxtwitter.com/santtiagom_/status/123"
+    assert make(author="atrjava", id=999, kind=TweetKind.RETWEET).preview_url == \
+        "https://fxtwitter.com/atrjava/status/999"

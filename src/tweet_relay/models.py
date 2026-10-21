@@ -10,6 +10,10 @@ import unicodedata
 from datetime import datetime, timezone
 from enum import Enum
 
+# Go-between that builds preview cards for posts (spec 003 research R-4). If it dies,
+# vxtwitter.com is the probed fallback.
+PREVIEW_HOST = "fxtwitter.com"
+
 HANDLE_RE = re.compile(r"^[A-Za-z0-9_]{1,15}$")
 MAX_ID = 2**63 - 1
 MAX_TEXT = 10_000
@@ -72,9 +76,9 @@ class Tweet:
         if not HANDLE_RE.match(author or ""):
             raise ValueError(f"malformed author: {author!r}")
 
+        # Empty is valid: a post that is only media or a quote has no text of its own,
+        # and dropping it broke exactly-once delivery (spec 003 US-7, FR-19).
         cleaned = clean_text(text or "")
-        if not cleaned:
-            raise ValueError("text is empty after normalisation")
         if len(cleaned) > MAX_TEXT:
             cleaned = cleaned[:MAX_TEXT]
 
@@ -91,6 +95,12 @@ class Tweet:
     def url(self) -> str:
         """Built from validated parts. Never copied from feed input (DD-5)."""
         return f"https://x.com/{self.author}/status/{self.id}"
+
+    @property
+    def preview_url(self) -> str:
+        """Where the chat builds the preview card (spec 003 D-1, plan DD-4). Same
+        validated parts as `url`; the go-between redirects readers to the post."""
+        return f"https://{PREVIEW_HOST}/{self.author}/status/{self.id}"
 
     def __repr__(self) -> str:
         return f"Tweet(id={self.id}, author={self.author!r}, kind={self.kind.value})"

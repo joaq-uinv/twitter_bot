@@ -1,4 +1,4 @@
-"""Renders a validated post as WhatsApp message text.
+"""Renders a validated post as chat message text.
 
 The rendered string is passed to the sink as opaque data and encoded there; nothing
 in here can affect the structure of the outbound request (FR-13, E-11).
@@ -17,6 +17,13 @@ _MARKERS = {
 
 
 def render(tweet: Tweet, monitored_handle: str) -> str:
+    if not tweet.text:
+        # Spec 003 US-7: fixed wording by kind, so a repost is never shown as the
+        # account's own post; the preview card carries the media.
+        lead = _MINIMAL_LEADS[tweet.kind].format(monitored=monitored_handle,
+                                                 author=tweet.author)
+        return f"{lead} (no text)\n\n{tweet.url}"
+
     body = tweet.text
     if len(body) > MAX_TEXT_CHARS:
         # Truncate the body only. The link is appended afterwards so it always

@@ -18,7 +18,7 @@ implementation.
 
 ## Phase 1: Fixtures, posts without text, commands (DD-12, DD-15)
 
-**T001 Capture fixtures.**
+**T001 Capture fixtures.** ✅ 2026-10-21
 - Files: `tests/fixtures/telegram/` with
   - `send_ok.json` (`ok: true`, `result.message_id`);
   - `unauthorized_401.json`, `not_found_404.json` (bodies observed in R-3);
@@ -33,33 +33,33 @@ implementation.
   `grep -rlE '[0-9]{8,10}:[A-Za-z0-9_-]{30,}' tests/fixtures` gives nothing (no real token).
 - Covers: §5 for FR-5, FR-7, E-12, E-13; US-7.
 
-**T002 [P] Test posts without text.** `tests/unit/test_models.py`, `test_nitter_parse.py`, `test_formatter.py`
+**T002 [P] Test posts without text.** ✅ 2026-10-21 `tests/unit/test_models.py`, `test_nitter_parse.py`, `test_formatter.py`
 - `Tweet(text="")` and `Tweet(text="​‮")` construct, with `text == ""`.
 - Bad id, author and time still raise (AC-7.3).
 - Parsing `feed_no_text_item.xml` yields the post instead of logging "empty after
   normalisation".
 - `render` of a text-less post per kind: ORIGINAL "New post from @santtiagom_ (no
   text)", RETWEET "@santtiagom_ reposted @x (no text)", QUOTE, REPLY; each followed by
-  the `x.com` link; no blank lines in between.
+  the `x.com` link, separated by a blank line as in every other message.
 - Verify: RED with `ValueError: text is empty after normalisation` and the old
   wording.
 - Covers: US-7, AC-7.1, AC-7.3, FR-19, E-21, E-22.
 
-**T003 Implement posts without text.** `src/tweet_relay/models.py`, `formatter.py`
+**T003 Implement posts without text.** ✅ 2026-10-21 `src/tweet_relay/models.py`, `formatter.py`
 - Verify: GREEN (T002).
 - Covers: FR-19.
 
-**T004 [P] Test `Tweet.preview_url`.** `tests/unit/test_models.py`
+**T004 [P] Test `Tweet.preview_url`.** ✅ 2026-10-21 `tests/unit/test_models.py`
 - Returns `https://fxtwitter.com/{author}/status/{id}`.
 - A hostile feed link (other host, extra path, query) cannot change it: the value
   depends only on `author` and `id`.
 - Verify: RED with `AttributeError: preview_url`.
 - Covers: FR-2, AC-1.2 (DD-4).
 
-**T005 Implement `preview_url`.** `src/tweet_relay/models.py`
+**T005 Implement `preview_url`.** ✅ 2026-10-21 `src/tweet_relay/models.py`
 - Verify: GREEN (T004).
 
-**T006 [P] Test command parsing.** `tests/unit/test_commands.py`
+**T006 [P] Test command parsing.** ✅ 2026-10-21 `tests/unit/test_commands.py`
 - `/status`, `/STATUS`, `/Pause now`, `/resume@my_bot`, `/help` give the command.
 - `/statusx`, `status`, `""`, ` /pause` (leading space), a 100 KB string, and
   binary-looking text give `UNKNOWN`.
@@ -67,10 +67,10 @@ implementation.
 - Verify: RED with `ModuleNotFoundError: tweet_relay.commands`.
 - Covers: FR-8, D-3, E-6, E-7.
 
-**T007 Implement `Command` and `parse`.** `src/tweet_relay/commands.py`
+**T007 Implement `Command` and `parse`.** ✅ 2026-10-21 `src/tweet_relay/commands.py`
 - Verify: GREEN (T006).
 
-**T008 [P] Test reply templates.** `tests/unit/test_commands.py`
+**T008 [P] Test reply templates.** ✅ 2026-10-21 `tests/unit/test_commands.py`
 - Each reply in data-model.md, with fixed inputs.
 - `/status`: "none yet" for no `last_check`; "not available" for no mirror data;
   "unknown, sources unavailable" for the waiting count when the fetch failed.
@@ -83,7 +83,7 @@ implementation.
 - Covers: AC-3.1, AC-3.2, AC-3.3, AC-4.1, AC-4.4, AC-4.5, AC-4.6, AC-5.1, AC-5.2,
   FR-11, E-17.
 
-**T009 Implement reply templates.** `src/tweet_relay/commands.py`
+**T009 Implement reply templates.** ✅ 2026-10-21 `src/tweet_relay/commands.py`
 - Verify: GREEN (T008).
 
 ## Phase 2: State (DD-9, DD-10)
@@ -420,3 +420,14 @@ doubles in `tests/doubles.py`.
 ## Manual verification log
 
 *(Tasks record results here, with dates.)*
+
+- 2026-10-21, Phase 1 (T001–T009): `PT` 585 passed. Each test pair was RED first for
+  the stated reason (empty text rejected; `preview_url`, `tweet_relay.commands` and
+  the reply builders missing). The full suite takes about 2.5 min, so it runs once per
+  phase; targeted tests run per task.
+  - T001: the text-less fixture was captured from `nitter.mie.foundation`, a
+    *candidate* mirror, because **all four in-use mirrors failed at capture time**
+    (kareem 404, pp.ua 403, thepixora 403, meowing 502). It holds three text-less
+    posts, including `2112685998547010004` from research R-5. Telegram fixtures: the
+    401 and 404 bodies are verbatim from R-3; the others follow the documented shapes
+    and are re-checked against the real bot in T046.

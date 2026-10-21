@@ -1,0 +1,115 @@
+{
+  "ok": true,
+  "result": [
+    {
+      "update_id": 1001,
+      "message": {
+        "message_id": 1001,
+        "date": 1792001001,
+        "chat": {
+          "id": 111222333,
+          "type": "private",
+          "first_name": "X"
+        },
+        "from": {
+          "id": 111222333,
+          "is_bot": false,
+          "first_name": "X"
+        },
+        "text": "/status"
+      }
+    },
+    {
+      "update_id": 1002,
+      "message": {
+        "message_id": 1002,
+        "date": 1792001002,
+        "chat": {
+          "id": 999888777,
+          "type": "private",
+          "first_name": "X"
+        },
+        "from": {
+          "id": 999888777,
+          "is_bot": false,
+          "first_name": "X"
+        },
+        "text": "/pause"
+      }
+    },
+    {
+      "update_id": 1003,
+      "message": {
+        "message_id": 1003,
+        "date": 1792001003,
+        "chat": {
+          "id": 111222333,
+          "type": "private",
+          "first_name": "X"
+        },
+        "from": {
+          "id": 111222333,
+          "is_bot": false,
+          "first_name": "X"
+        }
+      }
+    },
+    {
+      "update_id": 1004,
+      "edited_message": {
+        "message_id": 7,
+        "chat": {
+          "id": 111222333,
+          "type": "private"
+        },
+        "text": "/pause"
+      }
+    },
+    {
+      "message": {
+        "message_id": 9,
+        "chat": {
+          "id": 111222333,
+          "type": "private"
+        },
+        "text": "/pause"
+      }
+    },
+    {
+      "update_id": 1005,
+      "message": {
+        "message_id": 1005,
+        "date": 1792001005,
+        "chat": {
+          "id": 111222333,
+          "type": "private",
+          "first_name": "X"
+        },
+        "from": {
+          "id": 111222333,
+          "is_bot": false,
+          "first_name": "X"
+        },
+        "text": "/Pause now"
+      }
+    },
+    {
+      "update_id": 1006,
+      "message": {
+        "message_id": 1006,
+        "date": 1792001006,
+        "chat": {
+          "id": 111222333,
+          "type": "group",
+          "first_name": "X"
+        },
+        "from": {
+          "id": 111222333,
+          "is_bot": false,
+          "first_name": "X"
+        },
+        "text": "/resume"
+      }
+    }
+  ]
+}
