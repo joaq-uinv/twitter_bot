@@ -534,3 +534,12 @@ twice each from the operator's machine at about 19:40 UTC, then through the rela
 
 This is the swap spec 002 was built to make easy: both replacements came from its
 candidate list.
+
+## Amendment A-15 — build output kept out of the run log (2026-10-21)
+
+`run.log` feeds the job summary's "Full log" and the Healthchecks ping body (A-9). In
+run 39664882139 it held 99 lines of Docker build output and 28 lines of the check
+itself, and an uncached build is several times longer. The build now writes to
+`build.log` and to its step's own Actions log; `run.log` gets only the check. A failed
+build appends its last 80 lines to `run.log`, since then they are the only explanation
+the summary and the `/fail` ping can carry.

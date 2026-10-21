@@ -82,12 +82,18 @@ jobs:
             echo "::warning::no mirror-status branch; /status will say health is not available"
           fi
 
-      # Every step's output is also appended to run.log, which feeds the job summary
-      # and the Healthchecks ping body (plan A-9), so nobody has to open the raw log.
+      # The check's output is appended to run.log, which feeds the job summary and the
+      # Healthchecks ping body (plan A-9), so nobody has to open the raw log. Build
+      # output stays out of it: it was ~80% of run.log and buried the check's own lines
+      # (001 plan A-15). It is still in this step's log, and a failed build adds its
+      # tail to run.log, because then it is the only explanation there is.
       - name: Build image
         run: |
           set -o pipefail
-          docker compose --progress=plain build 2>&1 | tee -a run.log
+          if ! docker compose --progress=plain build 2>&1 | tee build.log; then
+            { echo "Image build failed. Last lines of the build:"; tail -n 80 build.log; } >> run.log
+            exit 1
+          fi
 
       - name: Run one check (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
