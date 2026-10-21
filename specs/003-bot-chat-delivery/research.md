@@ -104,8 +104,8 @@ text can keep the post's own `x.com` link while the card is built from the
 fxtwitter address. See DD-4 for why that is better than putting fxtwitter in the
 text.
 
-**Not verified, re-check at setup:** that Telegram actually renders the fxtwitter
-card in the operator's app (quickstart step 5).
+**Verified 2026-10-21 at the switch-over:** Telegram renders the fxtwitter card in
+the operator's app, with the post's own `x.com` link in the text.
 
 ## R-5: Posts with no text are dropped (brought into scope as spec US-7)
 

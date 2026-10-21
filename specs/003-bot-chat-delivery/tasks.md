@@ -443,8 +443,10 @@ doubles in `tests/doubles.py`.
   - T048 resume ([run 39664882139](https://github.com/joaq-uinv/twitter_bot/actions/runs/39664882139)):
     two `/resume` messages (the offset moved by 2, so two distinct updates, not a
     double-handle); 10 delivered oldest first, 0 withheld.
-  - Not yet confirmed by the operator: how the preview cards and "(no text)" posts
-    look in the Telegram app, and the stranger check from a second account.
+  - Confirmed by the operator in the Telegram app: posts show preview cards (research
+    R-4's "not verified" item is now verified), and image-only posts read "(no text)".
+    Not done: the stranger check from a second account (covered by unit and
+    adversarial tests only).
 
 - 2026-10-21, Phase 1 (T001–T009): `PT` 585 passed. Each test pair was RED first for
   the stated reason (empty text rejected; `preview_url`, `tweet_relay.commands` and
