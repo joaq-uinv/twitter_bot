@@ -88,7 +88,7 @@ implementation.
 
 ## Phase 2: State (DD-9, DD-10)
 
-**T010 Test the new state fields.** `tests/unit/test_state.py`
+**T010 Test the new state fields.** ✅ 2026-10-21 `tests/unit/test_state.py`
 - Round trip of `paused_since`, `update_offset`, `announced`, `last_check`.
 - The **current** `state/seen.json` from `main` loads with the defaults (`None`, `0`,
   `False`, `None`) and keeps every seen id (AC-2.1).
@@ -98,12 +98,12 @@ implementation.
 - Verify: RED with `TypeError`/`AttributeError` on the new fields.
 - Covers: FR-4, FR-12, AC-2.1, AC-4.2 (persistence).
 
-**T011 Implement the state fields.** `src/tweet_relay/state.py`
+**T011 Implement the state fields.** ✅ 2026-10-21 `src/tweet_relay/state.py`
 - Verify: GREEN (T010).
 
 ## Phase 3: `TelegramBot` as a sink (DD-1, DD-2, DD-8)
 
-**T012 Test sending.** `tests/unit/test_telegram.py`, respx
+**T012 Test sending.** ✅ 2026-10-21 `tests/unit/test_telegram.py`, respx
 - `send` posts JSON with `chat_id`, `text`, **no** `parse_mode`, and
   `link_preview_options.url == preview_url` when given; no `link_preview_options`
   when not.
@@ -112,10 +112,10 @@ implementation.
 - Verify: RED with `ModuleNotFoundError: tweet_relay.sinks.telegram`.
 - Covers: FR-1, FR-5, AC-1.1, AC-1.3, 001 E-11.
 
-**T013 Implement sending.** `src/tweet_relay/sinks/telegram.py`
+**T013 Implement sending.** ✅ 2026-10-21 `src/tweet_relay/sinks/telegram.py`
 - Verify: GREEN (T012).
 
-**T014 Test error classification.** `tests/unit/test_telegram.py`
+**T014 Test error classification.** ✅ 2026-10-21 `tests/unit/test_telegram.py`
 - 401, 403 blocked, 404, 400 "chat not found" → `DeliveryFailed`, **not**
   `MessageRejected`.
 - 400 "message is too long" → `MessageRejected`.
@@ -127,19 +127,19 @@ implementation.
 - Verify: RED (classification missing).
 - Covers: E-11, E-12, E-13, FR-10, contract message-sink 5–7.
 
-**T015 Implement error classification.** `src/tweet_relay/sinks/telegram.py`
+**T015 Implement error classification.** ✅ 2026-10-21 `src/tweet_relay/sinks/telegram.py`
 - Verify: GREEN (T014).
 
-**T016 Test the private-chat check.** `tests/unit/test_telegram.py`
+**T016 Test the private-chat check.** ✅ 2026-10-21 `tests/unit/test_telegram.py`
 - `chat_is_private()` is `True` for `get_chat_private.json`, `False` for the group
   fixture; any error raises `DeliveryFailed`.
 - Verify: RED (method missing).
 - Covers: D-4, E-14.
 
-**T017 Implement the private-chat check.** `src/tweet_relay/sinks/telegram.py`
+**T017 Implement the private-chat check.** ✅ 2026-10-21 `src/tweet_relay/sinks/telegram.py`
 - Verify: GREEN (T016).
 
-**T018 Test that nothing leaks.** `tests/adversarial/test_secret_leaks.py`
+**T018 Test that nothing leaks.** ✅ 2026-10-21 `tests/adversarial/test_secret_leaks.py`
 - With a marker token and chat id, force every error path in `TelegramBot`
   (each fixture in T001, a `ConnectError`, a `ReadTimeout`, a 1 MB error body,
   an error body that echoes the token back).
@@ -150,13 +150,13 @@ implementation.
   (check by temporarily raising `str(exc)` in the sink; record in the log below).
 - Covers: FR-16, DD-8, §6.
 
-**T019 Apply DD-8 everywhere it is needed.** `sinks/telegram.py`, `cli.py` (`_setup` registers the token and chat id with `logging_setup`)
+**T019 Apply DD-8 everywhere it is needed.** ✅ sink part 2026-10-21; `cli.py` part moved to T039 (it needs T037's config fields) `sinks/telegram.py`, `cli.py` (`_setup` registers the token and chat id with `logging_setup`)
 - Verify: GREEN (T018).
 - Covers: FR-16.
 
 ## Phase 4: `TelegramBot` as an inbox (DD-3, DD-6)
 
-**T020 Test `read`.** `tests/unit/test_telegram.py`
+**T020 Test `read`.** ✅ 2026-10-21 `tests/unit/test_telegram.py`
 - Requests `getUpdates` with `offset`, `limit=100`, `timeout=0`,
   `allowed_updates=["message"]`.
 - On `updates_mixed.json`: returns valid messages oldest first, skips the update with
@@ -168,7 +168,7 @@ implementation.
 - Verify: RED (`read` missing).
 - Covers: FR-6, FR-11, E-6, contract command-inbox 1–5.
 
-**T021 Implement `read`.** `src/tweet_relay/sinks/telegram.py`
+**T021 Implement `read`.** ✅ 2026-10-21 `src/tweet_relay/sinks/telegram.py`
 - Verify: GREEN (T020).
 
 **T022 Test inbox leaks.** `tests/adversarial/test_secret_leaks.py`, `tests/adversarial/test_no_third_party_text.py`
@@ -431,3 +431,14 @@ doubles in `tests/doubles.py`.
     posts, including `2112685998547010004` from research R-5. Telegram fixtures: the
     401 and 404 bodies are verbatim from R-3; the others follow the documented shapes
     and are re-checked against the real bot in T046.
+- 2026-10-21, Phases 2–4 (T010–T021): `PT` 665 passed. RED first for each pair
+  (missing fields, `ModuleNotFoundError: tweet_relay.sinks.telegram`, missing
+  classification, `chat_is_private`, `InboxUnavailable`).
+  - T018 went GREEN on its first run, because T013/T015 already followed DD-8. It was
+    proven able to fail by two mutants, each reverted: passing httpx's message on
+    (`str(exc)`) failed the connect and timeout cases (the token is in the URL);
+    disabling the description scrub failed the three echo cases. The tests live in
+    `tests/adversarial/test_telegram_leaks.py` rather than `test_secret_leaks.py`,
+    which holds the CallMeBot cases that T042 deletes.
+  - `IncomingMessage` and `InboxBatch` live in `commands.py` (data-model.md);
+    `InboxUnavailable` sits next to `DeliveryFailed` in `models.py`.

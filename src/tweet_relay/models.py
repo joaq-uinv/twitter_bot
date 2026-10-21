@@ -31,6 +31,11 @@ class DeliveryFailed(Exception):
     """A message was not delivered. Never raised when delivery actually succeeded."""
 
 
+class InboxUnavailable(Exception):
+    """The operator's commands could not be read this check (spec 003, contract
+    command-inbox 4). Carries no message content, sender, token or URL."""
+
+
 class MessageRejected(DeliveryFailed):
     """The channel refused this particular message, not the channel being down (E-21).
 

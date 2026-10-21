@@ -6,8 +6,27 @@ examined, and nothing from it is ever copied into a reply, a log line or state.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
+
+MAX_TEXT = 4096   # the chat's own message limit; longer is cut before any use (FR-11)
+
+
+@dataclass(frozen=True)
+class IncomingMessage:
+    """One message sent to the bot (data-model.md). Built only from validated fields;
+    `chat_id` is the only identity ever used (spec E-5)."""
+    update_id: int
+    chat_id: int
+    chat_type: str
+    text: str
+
+
+@dataclass(frozen=True)
+class InboxBatch:
+    messages: list[IncomingMessage]   # valid ones, oldest first
+    next_offset: int                  # past every update seen, valid or not
 
 
 class Command(StrEnum):

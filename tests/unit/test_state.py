@@ -1,5 +1,5 @@
 """Delivery history. DD-1 is the decision this module exists to enforce."""
-import json, os, pytest
+import json, logging, os, pathlib, pytest
 from datetime import datetime, timezone
 from tweet_relay.state import RelayState, load_state, save_state
 
@@ -130,3 +130,63 @@ def test_unwritable_state_directory_gives_an_actionable_error(tmp_path):
                 pass
     finally:
         os.chmod(locked, 0o700)
+
+
+# ---------- spec 003: pause, command offset, announcement, last check ----------
+
+T0 = datetime(2026, 10, 21, 18, 0, tzinfo=timezone.utc)
+
+
+def test_new_fields_round_trip(tmp_path):
+    p = sp(tmp_path)
+    s = RelayState(handle=H, seen_ids=[1], bootstrapped=True, paused_since=T0,
+                   update_offset=1006, announced=True, last_check=(T0, 4))
+    save_state(p, s)
+    back = load_state(p, H)
+    assert (back.paused_since, back.update_offset, back.announced, back.last_check) == \
+        (T0, 1006, True, (T0, 4))
+
+
+def test_a_pre_003_file_loads_with_defaults_and_keeps_every_id(tmp_path):
+    """AC-2.1, DD-10: the real seen.json from main before 003. No migration step."""
+    raw = (pathlib.Path(__file__).parent.parent / "fixtures" / "seen_pre003.json").read_text()
+    p = sp(tmp_path)
+    p.write_text(raw)
+    back = load_state(p, H)
+    assert back.seen_ids == json.loads(raw)["seen_ids"] and back.bootstrapped
+    assert (back.paused_since, back.update_offset, back.announced, back.last_check) == \
+        (None, 0, False, None)
+
+
+@pytest.mark.parametrize("field,value,attr,default", [
+    ("paused_since", "2026-10-21T18:00:00", "paused_since", None),        # naive
+    ("paused_since", "yesterday", "paused_since", None),
+    ("update_offset", "5", "update_offset", 0),
+    ("update_offset", -1, "update_offset", 0),
+    ("update_offset", True, "update_offset", 0),
+    ("announced", "yes", "announced", False),
+    ("last_check", {"at": "2026-10-21T18:00:00+00:00", "sent": -2}, "last_check", None),
+    ("last_check", {"at": "nope", "sent": 1}, "last_check", None),
+    ("last_check", [1, 2], "last_check", None),
+])
+def test_invalid_new_fields_fall_back_safely(tmp_path, caplog, field, value, attr, default):
+    """data-model.md: each bad value takes its safe default and is logged loudly."""
+    p = sp(tmp_path)
+    save_state(p, RelayState(handle=H, seen_ids=[7], bootstrapped=True))
+    raw = json.loads(p.read_text())
+    raw[field] = value
+    p.write_text(json.dumps(raw))
+    with caplog.at_level(logging.ERROR):
+        back = load_state(p, H)
+    assert getattr(back, attr) == default
+    assert back.seen_ids == [7]
+    assert any(r.levelno == logging.ERROR for r in caplog.records)
+
+
+def test_handle_change_resets_the_new_fields_too(tmp_path):
+    p = sp(tmp_path)
+    save_state(p, RelayState(handle="other", bootstrapped=True, paused_since=T0,
+                             update_offset=9, announced=True, last_check=(T0, 1)))
+    back = load_state(p, H)
+    assert (back.paused_since, back.update_offset, back.announced, back.last_check) == \
+        (None, 0, False, None)
