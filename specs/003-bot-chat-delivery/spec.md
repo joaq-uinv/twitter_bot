@@ -47,9 +47,9 @@ the bot **so that** I keep following the account now that the old channel is gon
 - **AC-1.1** Given a new post by the monitored account, when a check runs, then
   exactly one message for it appears in the operator's bot chat, with the same
   content as before (kind marker, text, link), and no message appears anywhere else.
-- **AC-1.2** Given a delivered post, when the operator views it, then its link goes
-  through a go-between address that produces a preview card and forwards the reader
-  to the post, and the card is shown with the message (D-1).
+- **AC-1.2** Given a delivered post, when the operator views it, then a preview card
+  built by a go-between service is shown with the message, and the message's link is
+  the post's own address (D-1, as refined on 2026-10-21).
 - **AC-1.3** Given the chat refuses a message, when the check runs, then the post
   is not recorded as delivered and the run reports a failure (001 FR-12, A-8).
 - **AC-1.4** Given the old channel's credentials are no longer configured, when a
@@ -163,10 +163,9 @@ normalisation". The account posts like this regularly.
   notice and command replies into one private chat between the operator and the
   bot, and nowhere else.
 - **FR-2** The system MUST keep 001's message content for posts (kind marker, text,
-  link). The post's link MUST be presented through a go-between address that
-  produces a preview card and forwards the reader to the post (D-1). The go-between
-  address MUST carry only the post's public identity: nothing about the operator,
-  the bot, or any secret.
+  link). The preview card MUST be built by a go-between service, while the link in
+  the message stays the post's own address (D-1). The go-between MUST receive only
+  the post's public identity: nothing about the operator, the bot, or any secret.
 - **FR-3** The system MUST remove the old delivery channel entirely: its sending
   code, its configuration, its credentials, and the scheduled-run step that alerted
   through it. It MUST NOT need any of them to run.
@@ -269,7 +268,7 @@ context loss.
 
 | # | Question | Decision | Reasoning |
 |---|----------|----------|-----------|
-| D-1 | Post addresses often produce no preview card in chat apps. Link through a go-between that builds the card, or keep the post's own address? | Go-between address that produces the card and forwards to the post | The operator asked for preview cards, and the post's own address often yields none because the post's site blocks preview services. Accepted cost: the go-between sees which posts the operator opens, and the card depends on a third party. The go-between gets only the post's public identity (FR-2), and the message keeps the post's text if it fails (E-20) |
+| D-1 | Post addresses often produce no preview card in chat apps. Link through a go-between that builds the card, or keep the post's own address? | Card built by a go-between; the visible link stays the post's own address. *Refined 2026-10-21 (plan P-1, operator chose option a):* first decided as a go-between link in the text, then research showed the chat can take the card from one address while showing another | The operator asked for preview cards, and the post's own address often yields none because the post's site blocks preview services. The refinement removes the original accepted cost: the go-between no longer sees which posts the operator opens, only that a post was previewed. The card still depends on a third party. The go-between gets only the post's public identity (FR-2), and the message keeps the post's text if it fails (E-20) |
 | D-2 | Announce the switch, or let the first post be the first message? | One-time "now delivering here" message on the first check, never repeated | A quiet account would otherwise be indistinguishable from a broken setup, the failure mode §7 exists to prevent. Once-only, like 001 D-2, so repeated runs never spam |
 | D-3 | How strict is command matching? | Case-insensitive; words after the command are ignored | Phone keyboards capitalise and autocorrect. A "try /help" reply to `/Pause` would cost the operator a whole check interval for nothing. Ignored words are never echoed, so this adds no hostile-input surface |
 | D-5 | Posts with no text of their own were being dropped as malformed. Fix it here? | Yes: deliver them as a fixed "no text" line plus the link (US-7, FR-19) | *Decided 2026-10-21, at the operator's request, after research R-5.* Dropping them breaks 001's promise of every post exactly once without any notice (§7). A fixed line is safe: nothing in it comes from the post except validated handles and the link, and the preview card shows the image |

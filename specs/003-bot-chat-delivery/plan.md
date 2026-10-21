@@ -9,7 +9,7 @@ Checked before design. Any "no" blocks the plan.
 
 | Principle | Compliant? | Notes |
 |-----------|-----------|-------|
-| §1 Spec approved, no open clarifications | ✅ | 0 markers, D-1..D-4 recorded. A scan of `spec.md` finds no technology names. One wording refinement is proposed in P-1 below, for the operator to confirm |
+| §1 Spec approved, no open clarifications | ✅ | 0 markers, D-1..D-4 recorded. A scan of `spec.md` finds no technology names. One wording refinement (P-1) was accepted by the operator and applied |
 | §2 Test-first plan | ✅ | Every phase starts with failing tests. Telegram responses become fixtures (R-3) before the sink exists |
 | §3 External systems behind adapters | ✅ | Delivery stays behind `MessageSink`. Reading commands gets a new `CommandInbox` adapter. Both are implemented by one `TelegramBot` class (DD-2). The mirror-health result is read from a file the workflow places, behind the existing `history` loader |
 | §4 Untrusted input validated | ✅ | Incoming updates are hostile JSON from a party the operator does not control: size-capped, schema-checked, identity from `chat.id` only, text never echoed or logged (FR-7, FR-11). The mirror-health file is parsed by the existing hostile-tolerant loader |
@@ -100,7 +100,7 @@ Components:
 
 | DD-15 | `Tweet.text` may be empty after cleaning; `render` then uses a fixed lead by kind (reusing the wording of the minimal form, e.g. "New post from @x (no text)", "@x reposted @y (no text)") plus the link | Keep dropping (001 behaviour); fall back to the feed's description HTML for some text | Spec US-7, D-5. The description is HTML from a third party; turning it into text needs a new sanitiser for no gain over the card. The fixed lead contains only validated handles, so it cannot be refused for its content, and E-21's minimal retry is unaffected |
 
-### P-1 Proposed spec wording refinement (needs the operator's OK)
+### P-1 Spec wording refinement — accepted 2026-10-21 (option a), applied to spec AC-1.2, FR-2, D-1
 
 Spec AC-1.2 and FR-2 say the post's link is *presented through* the go-between
 address. R-4 found that the Bot API can take the card from the go-between while the
