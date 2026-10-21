@@ -364,3 +364,65 @@ def test_overlapping_checks_handle_each_command_once(config):
     assert len(replies) == 2 and replies[0].startswith("⏸ Paused")
     s = state(config)
     assert s.paused_since == NOW and s.update_offset == 3
+
+
+# ---------- review P-3: fixes before merge ----------
+
+def test_a_stranger_flood_cannot_starve_the_operator(config):
+    """Review I-1, AC-6.2: 150 stranger updates ahead of one /pause (reads are 100 per
+    page), and the /pause is still handled in the same check."""
+    ready(config)
+    first = batch(*[msg(i, "spam", chat_id=STRANGER) for i in range(1, 101)])
+    first = type(first)(messages=first.messages, next_offset=101, more=True)
+    second = batch(*[msg(i, "spam", chat_id=STRANGER) for i in range(101, 151)],
+                   msg(151, "/pause"))
+    inbox = ScriptedInbox(first, second)
+    sink = RecordingSink()
+    pipe(config, FakeSource([tweet(1)]), sink, inbox).run_once()
+    assert inbox.offsets[:2] == [0, 101]
+    assert state(config).paused_since == NOW and sink.sent[0].startswith("⏸")
+    assert state(config).update_offset == 152
+
+
+def test_reading_more_pages_is_bounded(config):
+    """A flood that never ends costs a bounded number of reads per check."""
+    ready(config)
+
+    class EndlessSpam:
+        def __init__(self):
+            self.reads = 0
+
+        def read(self, offset):
+            from tweet_relay.commands import InboxBatch
+            self.reads += 1
+            return InboxBatch(messages=[msg(offset + i, "x", chat_id=STRANGER) for i in range(100)],
+                              next_offset=offset + 100, more=True)
+    inbox = EndlessSpam()
+    pipe(config, FakeSource([tweet(1)]), RecordingSink(), inbox).run_once()
+    assert inbox.reads == 10
+
+
+def test_resume_ignores_reposts_when_judging_aged_out_posts(config):
+    """Review m-1: a repost carries the original's old date."""
+    ready(config, paused_since=datetime(2026, 9, 15, 11, tzinfo=timezone.utc))
+    old_repost = tweet(2, kind=TweetKind.RETWEET, minutes=-60 * 24 * 365, author="someone")
+    sink = RecordingSink()
+    pipe(config, FakeSource([tweet(1), old_repost, tweet(3, minutes=3)]), sink,
+         ScriptedInbox(batch(msg(1, "/resume")))).run_once()
+    assert "may no longer be retrievable" in sink.sent[0]
+
+
+def test_a_pause_on_a_bootstrap_run_is_reported(config):
+    """Review m-2, AC-4.7."""
+    result = pipe(config, FakeSource([tweet(1)]), RecordingSink(),
+                  ScriptedInbox(batch(msg(1, "/pause")))).run_once()
+    assert result.bootstrapped and result.paused
+
+
+def test_the_minimal_retry_drops_the_card(config):
+    """Review m-5: the retry strips everything that is not essential."""
+    from tests.unit.test_pipeline import RefusingSink
+    ready(config)
+    sink = RefusingSink("post 2")
+    pipe(config, FakeSource([tweet(1), tweet(2, minutes=2)]), sink).run_once()
+    assert sink.previews[-1] is None

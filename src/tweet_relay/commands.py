@@ -27,6 +27,7 @@ class IncomingMessage:
 class InboxBatch:
     messages: list[IncomingMessage]   # valid ones, oldest first
     next_offset: int                  # past every update seen, valid or not
+    more: bool = False                # a full page: more may be waiting (review P-3)
 
 
 class Command(StrEnum):

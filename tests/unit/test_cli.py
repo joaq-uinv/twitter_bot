@@ -302,7 +302,8 @@ def test_bot_secrets_are_registered_for_log_redaction(monkeypatch, config):
     monkeypatch.setattr(cli.logging_setup, "configure",
                         lambda level, secrets: got.setdefault("secrets", secrets))
     cli._setup(config)
-    assert config.TELEGRAM_BOT_TOKEN.get_secret_value() in got["secrets"]
+    token = config.TELEGRAM_BOT_TOKEN.get_secret_value()
+    assert token in got["secrets"] and token.split(":")[1] in got["secrets"]
     assert "111222333" in got["secrets"]
 
 

@@ -53,8 +53,9 @@ def _load() -> Config:
 
 def _setup(config: Config) -> None:
     # Backstop redaction for every log record (spec 003 FR-16, plan DD-8).
+    token = config.TELEGRAM_BOT_TOKEN.get_secret_value()
     logging_setup.configure(config.LOG_LEVEL,
-                            secrets=[config.TELEGRAM_BOT_TOKEN.get_secret_value(),
+                            secrets=[token, token.partition(":")[2],
                                      config.TELEGRAM_CHAT_ID.get_secret_value(),
                                      os.environ.get("GITHUB_TOKEN", "")])
 
@@ -160,9 +161,8 @@ def _run(config: Config, once: bool, dry_run: bool) -> int:
     source = NitterRssSource(config)
     bot = _bot(config) if config.TELEGRAM_BOT_TOKEN.get_secret_value() else None
     sink = ConsoleSink() if dry_run else bot
-    chat = config.TELEGRAM_CHAT_ID.get_secret_value()
     pipeline = Pipeline(config, source, sink, inbox=bot,
-                        operator_chat_id=int(chat) if chat else None,
+                        operator_chat_id=config.chat_id,
                         mirror_latest_path=config.MIRROR_LATEST_PATH,
                         status_page_url=config.STATUS_PAGE_URL)
 

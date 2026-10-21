@@ -135,3 +135,27 @@ changes.
 6. **CLI, config, report.** `test-delivery`, `find-chat-id`, `paused=`; CallMeBot removed everywhere (code, `.env.example`, README, CLAUDE.md).
 7. **Workflow.** Secrets, scrub list, mirror-health file, alert step deleted. actionlint.
 8. **Review** (`superpowers:requesting-code-review`), then the operator's setup and a live switch-over (quickstart).
+
+## Amendment P-3 — pre-merge review fixes (2026-10-21, T045)
+
+`superpowers:requesting-code-review` on `46380b4..00cc039`: 0 critical, 1 important,
+8 minor; verdict "with fixes". All fixed, each with a test that failed first:
+
+- **I-1, a stranger flood could starve the operator (AC-6.2).** One read returns at
+  most 100 updates, so a stranger sending more than that per check kept the operator's
+  commands behind a backlog until Telegram dropped them after 24 h. `InboxBatch` now
+  says when a page was full, and the pipeline reads further pages while each is fully
+  consumed, at most 10 reads per check. Skipping strangers costs no sends, so DD-6's
+  reply cap is unchanged.
+- m-1: the aged-out warning (AC-4.5) ignores reposts, whose date is the original's.
+- m-2: a `/pause` on a bootstrap run is reported as paused (AC-4.7).
+- m-3: deeply nested JSON (`RecursionError`) is an unusable answer, not a crash. The
+  size cap still applies after httpx buffers the body; the source is Telegram over TLS,
+  so streaming was not added (§8).
+- m-4: the log-redaction backstop now scrubs non-string arguments and tracebacks, and
+  the token's secret half is registered too.
+- m-5: the minimal-form retry no longer carries the preview URL.
+- m-6: the minimal form of a post without text says "(no text)", not that its text
+  was lost.
+- m-7: `Config.chat_id` is used by the CLI instead of a second conversion.
+- m-8: README and CLAUDE.md warn that a local non-dry run consumes bot commands.

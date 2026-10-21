@@ -74,7 +74,9 @@ gh secret list                             # confirm TELEGRAM_BOT_TOKEN/CHAT_ID 
 
 `docker compose up -d` still works for local development, but never run it against
 the same account at the same time as the Actions schedule — each keeps its own
-`seen.json`, so they'd double-deliver anything published after they diverge.
+`seen.json`, so they'd double-deliver anything published after they diverge. With the
+production bot token, a local non-dry run also **consumes the operator's commands**, so
+the scheduled run never sees them. Use `--dry-run` locally, which confirms nothing.
 
 ## Project facts that are easy to get wrong
 

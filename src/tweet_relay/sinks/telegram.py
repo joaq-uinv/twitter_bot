@@ -26,6 +26,7 @@ API_ROOT = "https://api.telegram.org"
 MAX_FLOOD_WAIT = 30            # seconds; longer waits fail the send (contract 5)
 _DESCRIPTION_CHARS = 200
 MAX_UPDATES_BYTES = 1 << 20    # contract command-inbox 4
+UPDATES_PER_READ = 100         # the API's maximum (plan DD-3)
 # A 400 that mentions any of these is about the chat or the bot, not this message, so
 # the minimal-form retry would only add traffic (contract 7).
 _CHANNEL_WORDING = re.compile(
@@ -105,7 +106,8 @@ class TelegramBot:
         pipeline decides that offset (plan DD-5). Who sent a message is not judged here.
         """
         try:
-            body = self._call("getUpdates", {"offset": offset, "limit": 100, "timeout": 0,
+            body = self._call("getUpdates", {"offset": offset, "limit": UPDATES_PER_READ,
+                                             "timeout": 0,
                                              "allowed_updates": ["message"]},
                               max_bytes=MAX_UPDATES_BYTES)
         except DeliveryFailed as exc:          # its text is already scrubbed
@@ -126,7 +128,8 @@ class TelegramBot:
         if skipped:
             log.debug("skipped %d updates that are not usable messages", skipped)
         messages.sort(key=lambda m: m.update_id)
-        return InboxBatch(messages=messages, next_offset=next_offset)
+        return InboxBatch(messages=messages, next_offset=next_offset,
+                          more=len(updates) >= UPDATES_PER_READ)
 
     def _call(self, method: str, payload: dict, *, max_bytes: int | None = None) -> dict:
         """One API call with retries. Returns the body of an `ok` answer.
@@ -153,7 +156,7 @@ class TelegramBot:
                             raise DeliveryFailed(f"{method}: answer over {max_bytes} bytes")
                         try:
                             body = response.json()
-                        except ValueError:
+                        except (ValueError, RecursionError):   # deep nesting (review P-3)
                             raise DeliveryFailed(f"{method}: HTTP {response.status_code} "
                                                  "with a non-JSON body") from None
                         if not isinstance(body, dict):

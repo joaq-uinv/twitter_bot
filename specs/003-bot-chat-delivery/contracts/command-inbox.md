@@ -8,6 +8,7 @@ class CommandInbox(Protocol):
 class InboxBatch:
     messages: list[IncomingMessage]   # valid ones, oldest first
     next_offset: int                  # highest update_id seen (valid or not) + 1, else offset
+    more: bool = False                # a full page came back: more may be waiting (P-3)
 ```
 
 ## Guarantees an implementation MUST provide
@@ -36,6 +37,8 @@ class InboxBatch:
   delivery: a broken command path must not also stop the relay's main job.
 - Commands are handled before posts are delivered, after the fetch (plan Architecture).
 - Each handled command advances and saves the offset before its reply (plan DD-5).
+- When a page is fully consumed and `more` is set, read the next page, at most 10 reads
+  per check, so a flood of strangers cannot starve the operator (plan P-3, AC-6.2).
 
 ## Implementations
 

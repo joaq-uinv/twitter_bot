@@ -54,6 +54,8 @@ def render_minimal(tweet: Tweet, monitored_handle: str) -> str:
     is never presented as the account's own post.
     """
     lead = _MINIMAL_LEADS[tweet.kind].format(monitored=monitored_handle, author=tweet.author)
+    if not tweet.text:
+        return f"{lead} (no text): {tweet.url}"      # it never had any (spec 003 US-7)
     return f"{lead} (its text could not be delivered): {tweet.url}"
 
 

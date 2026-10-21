@@ -339,7 +339,7 @@ doubles in `tests/doubles.py`.
 
 ## Phase 8: Review and switch-over
 
-**T045 Pre-merge review.** `superpowers:requesting-code-review` on the branch.
+**T045 Pre-merge review.** ✅ 2026-10-21 `superpowers:requesting-code-review` on the branch.
 - Fix every Critical and Important finding; record as plan amendment(s).
 - Verify: verdict "Yes", or "With fixes" with the fixes landed; `PT` green.
 

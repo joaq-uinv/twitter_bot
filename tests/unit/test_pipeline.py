@@ -292,6 +292,7 @@ class RefusingSink(RecordingSink):
                 raise DeliveryFailed("channel down")
             raise MessageRejected("rejected with HTTP 403")
         self.sent.append(message)
+        self.previews.append(preview_url)
 
 
 def _with_pending(config, sink, *new):

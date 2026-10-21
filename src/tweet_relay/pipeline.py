@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
 
 DEFAULT_STATUS_PAGE = "https://joaq-uinv.github.io/twitter_bot/"
 MAX_COMMANDS_PER_CHECK = 20     # plan DD-6
+MAX_READS_PER_CHECK = 10        # review P-3: pages of stranger updates read past
 
 
 @dataclass
@@ -79,8 +80,9 @@ class Pipeline:
             self._send(render(t, handle), preview_url=t.preview_url)
         except MessageRejected as exc:
             log.warning("message refused for %s, retrying in minimal form: %s", t.id, exc)
-            # Failure propagates as usual.
-            self._send(render_minimal(t, handle), preview_url=t.preview_url)
+            # Failure propagates as usual. No card: the retry carries only what is
+            # essential, so nothing optional can be the reason it is refused (review P-3).
+            self._send(render_minimal(t, handle))
             log.warning("delivered in minimal form tweet_id=%s", t.id)
 
     def _wanted(self, kind: TweetKind) -> bool:
@@ -159,6 +161,7 @@ class Pipeline:
                     result.failed = 1      # A-10: a paused channel on a first run is not green
                 result.bootstrapped = True
                 self._handle_commands(state, [], tweets, result)
+                result.paused = state.paused_since is not None
                 log.info("check complete: bootstrapped %d existing posts as seen",
                          len(tweets))
                 return self._finish(state, result)
@@ -223,14 +226,25 @@ class Pipeline:
         """
         if self.inbox is None:
             return
-        try:
-            inbox = self.inbox.read(state.update_offset)
-        except InboxUnavailable as exc:
-            log.error("could not read the operator's commands: %s", exc)
-            result.failed = 1
-            return
-
         handled = 0
+        # Review P-3: a stranger can fill whole pages; keep reading past them, a bounded
+        # number of times, so they cannot starve the operator's commands (AC-6.2).
+        for _page in range(MAX_READS_PER_CHECK):
+            try:
+                inbox = self.inbox.read(state.update_offset)
+            except InboxUnavailable as exc:
+                log.error("could not read the operator's commands: %s", exc)
+                result.failed = 1
+                break
+            handled, finished = self._handle_page(inbox, state, queue, tweets, result, handled)
+            if not (finished and inbox.more):
+                break
+        save_state(self.config.STATE_PATH, state)
+
+    def _handle_page(self, inbox, state, queue, tweets, result: RunResult,
+                     handled: int) -> tuple[int, bool]:
+        """One page of updates. Returns the running count of handled commands and
+        whether the whole page was consumed (so the next page may be read)."""
         for message in inbox.messages:
             if message.update_id < state.update_offset:
                 continue                               # FR-9: handled in an earlier check
@@ -239,7 +253,7 @@ class Pipeline:
                 state.update_offset = max(state.update_offset, message.update_id + 1)
                 continue
             if handled == MAX_COMMANDS_PER_CHECK:
-                break                                  # DD-6: the rest wait a check
+                return handled, False                  # DD-6: the rest wait a check
             command = parse(message.text)
             reply = self._apply(command, state, queue, tweets)
             state.update_offset = max(state.update_offset, message.update_id + 1)
@@ -251,11 +265,10 @@ class Pipeline:
             except DeliveryFailed as exc:
                 log.error("could not deliver the reply to %s: %s", command.value, exc)
                 result.failed = 1
-                break
-        else:
-            # Everything read was handled or skipped, malformed updates included.
-            state.update_offset = max(state.update_offset, inbox.next_offset)
-        save_state(self.config.STATE_PATH, state)
+                return handled, False
+        # Everything read was handled or skipped, malformed updates included.
+        state.update_offset = max(state.update_offset, inbox.next_offset)
+        return handled, True
 
     def _from_operator(self, message) -> bool:
         return (self.operator_chat_id is not None
@@ -273,7 +286,10 @@ class Pipeline:
         if command is Command.RESUME:
             before = state.paused_since
             state.paused_since = None
-            oldest = min((t.published_at for t in tweets), default=None) if tweets else None
+            # Reposts carry the original post's date, which can be years old, so they
+            # say nothing about how far back the sources reach (review P-3).
+            own = [t.published_at for t in (tweets or []) if t.kind is not TweetKind.RETWEET]
+            oldest = min(own, default=None)
             return render_resume(before, waiting=waiting,
                                  cap=self.config.max_messages_per_run, oldest_listed=oldest)
         if command is Command.STATUS:

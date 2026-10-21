@@ -261,3 +261,21 @@ def test_an_unusable_answer_is_inbox_unavailable(response):
     respx.post(f"{API}/getUpdates").mock(response)
     with pytest.raises(InboxUnavailable):
         bot(max_attempts=1).read(0)
+
+
+# ---------- review P-3 ----------
+
+@respx.mock
+def test_a_full_page_says_more_may_be_waiting():
+    page = [{"update_id": i, "message": {"message_id": i, "chat": {"id": 1, "type": "private"},
+                                          "text": "x"}} for i in range(1, 101)]
+    respx.post(f"{API}/getUpdates").mock(httpx.Response(200, json={"ok": True, "result": page}))
+    assert bot().read(0).more is True
+
+
+@respx.mock
+def test_deeply_nested_json_is_a_failure_not_a_crash():
+    """Review m-3: RecursionError is not a ValueError."""
+    respx.post(f"{API}/getUpdates").mock(httpx.Response(200, content=b"[" * 100_000))
+    with pytest.raises(InboxUnavailable):
+        bot(max_attempts=1).read(0)

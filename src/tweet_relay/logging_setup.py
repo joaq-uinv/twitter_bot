@@ -32,17 +32,27 @@ class SecretRedactingFilter(logging.Filter):
                 value = value.replace(needle, "***REDACTED***")
         return value
 
+    def _arg(self, value):
+        # Numbers stay numbers (for %d); anything else is rendered and scrubbed, because
+        # an exception object passed as %s renders its message (spec 003 review P-3).
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return value
+        return self._scrub(value if isinstance(value, str) else str(value))
+
     def filter(self, record: logging.LogRecord) -> bool:
         if self.needles:
             if isinstance(record.msg, str):
                 record.msg = self._scrub(record.msg)
             if record.args:
                 if isinstance(record.args, dict):
-                    record.args = {k: self._scrub(v) if isinstance(v, str) else v
-                                   for k, v in record.args.items()}
+                    record.args = {k: self._arg(v) for k, v in record.args.items()}
                 else:
-                    record.args = tuple(self._scrub(a) if isinstance(a, str) else a
-                                        for a in record.args)
+                    record.args = tuple(self._arg(a) for a in record.args)
+            if record.exc_info and not record.exc_text:
+                # Formatters reuse exc_text when it is set, so the traceback is
+                # rendered here once, already scrubbed.
+                record.exc_text = self._scrub(
+                    logging.Formatter().formatException(record.exc_info))
         return True
 
 

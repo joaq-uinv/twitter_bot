@@ -198,8 +198,9 @@ class Config(BaseSettings):
                 "See specs/003-bot-chat-delivery/quickstart.md steps 1-2.")
 
     @property
-    def chat_id(self) -> int:
-        return int(self.TELEGRAM_CHAT_ID.get_secret_value())
+    def chat_id(self) -> int | None:
+        raw = self.TELEGRAM_CHAT_ID.get_secret_value()
+        return int(raw) if raw else None
 
     @property
     def handle(self) -> str:
