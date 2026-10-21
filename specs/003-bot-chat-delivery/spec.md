@@ -1,6 +1,6 @@
 # Feature Specification: Bot Chat Delivery & Commands
 
-**Feature:** `003-bot-chat-delivery` | **Status:** Draft | **Created:** 2026-10-21
+**Feature:** `003-bot-chat-delivery` | **Status:** Clarified | **Created:** 2026-10-21
 
 > Constitution §1: this document describes **behaviour**, not implementation.
 > No language, library, protocol or vendor names. Those belong in `plan.md`. The
@@ -44,9 +44,9 @@ the bot **so that** I keep following the account now that the old channel is gon
 - **AC-1.1** Given a new post by the monitored account, when a check runs, then
   exactly one message for it appears in the operator's bot chat, with the same
   content as before (kind marker, text, link), and no message appears anywhere else.
-- **AC-1.2** Given the delivered message contains the post's link, when the
-  operator views it, then a preview card for the post is shown with the message.
-  *(See Open Questions: C-1.)*
+- **AC-1.2** Given a delivered post, when the operator views it, then its link goes
+  through a go-between address that produces a preview card and forwards the reader
+  to the post, and the card is shown with the message (D-1).
 - **AC-1.3** Given the chat refuses a message, when the check runs, then the post
   is not recorded as delivered and the run reports a failure (001 FR-12, A-8).
 - **AC-1.4** Given the old channel's credentials are no longer configured, when a
@@ -64,7 +64,8 @@ get old posts again.
   are still in the account's recent posts, when the first check on the new channel
   runs, then they are delivered, oldest first, within the per-check limit.
 - **AC-2.3** Given the first check on the new channel, when it runs, then the
-  operator's chat shows that the relay is now delivering there. *(See C-2.)*
+  operator's chat shows, once, that the relay is now delivering there. It is never
+  repeated on later checks (D-2).
 
 ### US-3: Ask the relay how it is doing
 **As** the operator **I want** to send `/status` and get a summary **so that** I can
@@ -140,7 +141,10 @@ finds it cannot pause my relay, read its status, or fill my logs.
   notice and command replies into one private chat between the operator and the
   bot, and nowhere else.
 - **FR-2** The system MUST keep 001's message content for posts (kind marker, text,
-  link) and MUST present the post's link so that a preview card is shown. *(C-1.)*
+  link). The post's link MUST be presented through a go-between address that
+  produces a preview card and forwards the reader to the post (D-1). The go-between
+  address MUST carry only the post's public identity: nothing about the operator,
+  the bot, or any secret.
 - **FR-3** The system MUST remove the old delivery channel entirely: its sending
   code, its configuration, its credentials, and the scheduled-run step that alerted
   through it. It MUST NOT need any of them to run.
@@ -155,9 +159,9 @@ finds it cannot pause my relay, read its status, or fill my logs.
 - **FR-7** The system MUST act only on messages from the operator's own chat. Every
   other message MUST be discarded without a reply, a state change, or a log record
   of its content or sender.
-- **FR-8** The system MUST recognise exactly `/status`, `/pause`, `/resume` and
-  `/help`, and MUST answer anything else from the operator with one short pointer to
-  `/help`.
+- **FR-8** The system MUST recognise `/status`, `/pause`, `/resume` and `/help`,
+  ignoring letter case and any words after the command (D-3), and MUST answer
+  anything else from the operator with one short pointer to `/help`.
 - **FR-9** The system MUST handle each operator message at most once, even if a
   check fails part way or two checks overlap.
 - **FR-10** The system MUST bound the work per check: the number of messages read
@@ -198,16 +202,17 @@ finds it cannot pause my relay, read its status, or fill my logs.
 | E-4 | A stranger finds the bot and sends `/pause` | Ignored entirely (FR-7, AC-6.1) |
 | E-5 | A message claims to come from the operator in its text, or is forwarded from the operator by someone else | Identity comes only from the chat it arrived in, never from content. Ignored |
 | E-6 | Operator message is huge, binary, or contains characters meaningful to the chat's formatting | Size-capped; treated as unknown text (AC-5.2); never echoed |
-| E-7 | Command with extra words or different case (`/Pause now`, `/STATUS`) | [NEEDS CLARIFICATION: C-3 — accept leading command case-insensitively and ignore trailing words, or treat as unknown?] |
+| E-7 | Command with extra words or different case (`/Pause now`, `/STATUS`) | Recognised as the command; the extra words are ignored, never echoed (D-3) |
 | E-8 | Command arrives while the check that reads it fails before replying | Not lost and not double-handled: handled by a later check exactly once (FR-9) |
 | E-9 | Commands older than the chat's own retention, because checks were delayed for a long time | May be lost without trace. Accepted limitation; `/help` warns that replies wait for the next check |
 | E-10 | Two checks run at once (manual run plus scheduled run) | Each command handled once; the paused state is not corrupted (001 E-17) |
 | E-11 | Chat refuses a command reply but accepts posts, or the reverse | Same handling as any refused message: not counted as sent; run reports failure |
 | E-12 | Operator blocks the bot or deletes the chat | Every delivery fails; run fails loudly; the independent alarms fire (FR-17) |
 | E-13 | Bot credentials revoked or wrong | Every delivery fails; the failure reason in the run says the credentials were rejected, without revealing them |
-| E-14 | Operator chat identity misconfigured (points at someone else's chat) | [NEEDS CLARIFICATION: C-4 — is there anything the relay can check, or is this the operator's setup responsibility, verified once at setup?] |
+| E-14 | Operator chat identity misconfigured (points at a group, a channel, or someone else's chat) | Each check confirms the target is a one-to-one private chat; if not, nothing is sent and the run fails loudly without revealing the identity. Whether the private chat is really the operator's is confirmed once at setup with a test message (D-4) |
 | E-15 | Paused for longer than the sources' recent window | On resume, the confirmation carries the warning in AC-4.5; posts no longer listed are not delivered |
-| E-16 | Post link cannot produce a preview card (deleted post, blocked preview) | Message still delivered with its text and link; a missing card is never a delivery failure |
+| E-16 | Post link cannot produce a preview card (deleted post, go-between down or blocked) | Message still delivered with its text and link; a missing card is never a delivery failure. If the go-between stops working altogether, replacing it is a plan change, not a spec change |
+| E-20 | The go-between service changes, dies, or starts misbehaving (e.g. forwarding elsewhere) | Posts are still delivered: the message keeps the post's text, so the operator can still find it on the account. The operator notices from missing cards or bad links, and swapping the go-between is a plan change |
 | E-17 | `/status` when no check has delivered anything yet, or the record is fresh | Reply states "none yet" instead of a time or count |
 | E-18 | Paused, then the first check on the new channel runs | The switch announcement (AC-2.3) still appears; stuck posts wait for `/resume` |
 | E-19 | Stranger's message contains a secret-looking string or a fake log line | Never logged (FR-7), so cannot reach any report |
@@ -226,18 +231,19 @@ finds it cannot pause my relay, read its status, or fill my logs.
 
 ## Open Questions
 
-- **C-1** [NEEDS CLARIFICATION: The account's own post addresses often fail to
-  produce a preview card in chat apps, because the post's site blocks preview
-  services. A card can be obtained by linking through an intermediary address that
-  shows the card and forwards readers to the post. Is it acceptable for the
-  delivered link to be such an intermediary address (a third party then sees which
-  posts the operator opens), or must the link stay the post's own address, accepting
-  that the card will sometimes be missing?]
-- **C-2** [NEEDS CLARIFICATION: Should the first check on the new channel send a one-time
-  "now delivering here" message, or should the first message the operator sees be
-  the first post?]
-- **C-3** See E-7.
-- **C-4** See E-14.
+None. All four were resolved on 2026-10-21 (see Decisions).
+
+## Decisions
+
+Resolved 2026-10-21 via `/speckit-clarify`. Recorded here so the reasoning survives
+context loss.
+
+| # | Question | Decision | Reasoning |
+|---|----------|----------|-----------|
+| D-1 | Post addresses often produce no preview card in chat apps. Link through a go-between that builds the card, or keep the post's own address? | Go-between address that produces the card and forwards to the post | The operator asked for preview cards, and the post's own address often yields none because the post's site blocks preview services. Accepted cost: the go-between sees which posts the operator opens, and the card depends on a third party. The go-between gets only the post's public identity (FR-2), and the message keeps the post's text if it fails (E-20) |
+| D-2 | Announce the switch, or let the first post be the first message? | One-time "now delivering here" message on the first check, never repeated | A quiet account would otherwise be indistinguishable from a broken setup, the failure mode §7 exists to prevent. Once-only, like 001 D-2, so repeated runs never spam |
+| D-3 | How strict is command matching? | Case-insensitive; words after the command are ignored | Phone keyboards capitalise and autocorrect. A "try /help" reply to `/Pause` would cost the operator a whole check interval for nothing. Ignored words are never echoed, so this adds no hostile-input surface |
+| D-4 | What if the configured chat identity points at the wrong chat? | Each check confirms the target is a one-to-one private chat and fails loudly otherwise; that it is the operator's is confirmed once at setup | Sending posts and status into a group or channel would leak them to others. Whether a private chat belongs to the operator cannot be checked by the relay, so setup confirms it once with a test message |
 
 ## Success
 
