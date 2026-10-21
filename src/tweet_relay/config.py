@@ -23,7 +23,9 @@ DEFAULT_INSTANCES = [
 ]
 
 _PROFILE_HOSTS = {"x.com", "www.x.com", "twitter.com", "www.twitter.com"}
-PHONE_RE = re.compile(r"^\+[1-9]\d{7,14}$")
+# Spec 003 data-model.md. Shape only: whether the token works is the first send's job.
+BOT_TOKEN_RE = re.compile(r"^\d{5,12}:[A-Za-z0-9_-]{30,64}$")
+CHAT_ID_RE = re.compile(r"^-?\d{1,20}$")
 
 
 def extract_handle(raw: str) -> str:
@@ -120,14 +122,19 @@ def _validate_instance(url: str) -> str:
 
 
 class Config(BaseSettings):
+    # hide_input_in_errors: a rejected value must not be echoed by the validation
+    # error, because the rejected value may be a secret (spec 003 FR-16).
     model_config = SettingsConfigDict(env_file=".env", extra="ignore",
-                                      case_sensitive=False)
+                                      case_sensitive=False, hide_input_in_errors=True)
 
     X_PROFILE_URL: str
     # Blank is allowed so `check-source` can diagnose retrieval before delivery is
     # set up. Commands that actually deliver assert these via require_delivery().
-    CALLMEBOT_PHONE: str = ""
-    CALLMEBOT_APIKEY: SecretStr = SecretStr("")   # SecretStr keeps it out of reprs
+    # Both are secrets (spec 003 FR-16); SecretStr keeps them out of reprs.
+    TELEGRAM_BOT_TOKEN: SecretStr = SecretStr("")
+    TELEGRAM_CHAT_ID: SecretStr = SecretStr("")
+    STATUS_PAGE_URL: str = "https://joaq-uinv.github.io/twitter_bot/"
+    MIRROR_LATEST_PATH: str = "/data/mirror-latest.json"
 
     INCLUDE_RETWEETS: bool = True
     INCLUDE_REPLIES: bool = False
@@ -148,15 +155,31 @@ class Config(BaseSettings):
         extract_handle(v)
         return v
 
-    @field_validator("CALLMEBOT_PHONE")
+    @field_validator("TELEGRAM_BOT_TOKEN")
     @classmethod
-    def _check_phone(cls, v: str) -> str:
-        v = (v or "").strip()
-        if v == "":
-            return v
-        if not PHONE_RE.match(v):
-            raise ValueError(f"CALLMEBOT_PHONE must be E.164 (e.g. +34600111222), got {v!r}")
-        return v.strip()
+    def _check_token(cls, v: SecretStr) -> SecretStr:
+        raw = v.get_secret_value().strip()
+        if raw and not BOT_TOKEN_RE.match(raw):
+            # Never echo the value: it is a secret even when malformed.
+            raise ValueError("TELEGRAM_BOT_TOKEN does not look like a bot token "
+                             "(digits, a colon, then 30-64 letters, digits, - or _)")
+        return SecretStr(raw)
+
+    @field_validator("TELEGRAM_CHAT_ID")
+    @classmethod
+    def _check_chat(cls, v: SecretStr) -> SecretStr:
+        raw = v.get_secret_value().strip()
+        if raw and not CHAT_ID_RE.match(raw):
+            raise ValueError("TELEGRAM_CHAT_ID must be a whole number "
+                             "(see quickstart: find-chat-id)")
+        return SecretStr(raw)
+
+    @field_validator("STATUS_PAGE_URL")
+    @classmethod
+    def _check_page(cls, v: str) -> str:
+        if urlparse(v).scheme != "https" or not urlparse(v).hostname:
+            raise ValueError(f"STATUS_PAGE_URL must be an https URL, got {v!r}")
+        return v
 
     @field_validator("NITTER_INSTANCES")
     @classmethod
@@ -167,16 +190,16 @@ class Config(BaseSettings):
 
     def require_delivery(self) -> None:
         """Raise unless delivery is fully configured. Called by commands that send."""
-        missing = []
-        if not self.CALLMEBOT_PHONE:
-            missing.append("CALLMEBOT_PHONE")
-        if not self.CALLMEBOT_APIKEY.get_secret_value():
-            missing.append("CALLMEBOT_APIKEY")
+        missing = [name for name in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID")
+                   if not getattr(self, name).get_secret_value()]
         if missing:
             raise ValueError(
                 f"{' and '.join(missing)} must be set to deliver messages.\n"
-                "Get a key: WhatsApp +34 644 51 95 23 with\n"
-                "  I allow callmebot to send me messages")
+                "See specs/003-bot-chat-delivery/quickstart.md steps 1-2.")
+
+    @property
+    def chat_id(self) -> int:
+        return int(self.TELEGRAM_CHAT_ID.get_secret_value())
 
     @property
     def handle(self) -> str:

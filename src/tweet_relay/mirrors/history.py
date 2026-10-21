@@ -104,7 +104,7 @@ def _latest_to_json(x: Latest) -> dict:
             "warnings": {h: _ts(t) for h, t in x.warnings.items()}}
 
 
-def _latest_from_json(d: dict) -> Latest:
+def latest_from_json(d: dict) -> Latest:
     rnd, disc = d["round"], d["discovery"]
     for n in (rnd["in_use_healthy"], rnd["in_use_total"], disc["accepted"], disc["rejected"]):
         if not isinstance(n, int) or isinstance(n, bool) or n < 0:
@@ -152,7 +152,7 @@ class DirHistoryStore:
         if not path.exists():
             return EMPTY_LATEST
         try:
-            return _latest_from_json(json.loads(path.read_text(encoding="utf-8")))
+            return latest_from_json(json.loads(path.read_text(encoding="utf-8")))
         except Exception:
             log.error("latest.json unreadable; starting from an empty state")
             return EMPTY_LATEST

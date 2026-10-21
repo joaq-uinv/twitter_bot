@@ -69,3 +69,9 @@ def render_outage(handle: str, detail: str) -> str:
 
 def render_withheld(count: int) -> str:
     return f"…and {count} more not sent yet — they will arrive on the next checks."
+
+
+def render_announcement(handle: str) -> str:
+    """Spec 003 D-2: sent once, on the first check through the new channel."""
+    return (f"✅ Relay now delivers here for @{handle}.\n\n"
+            "Posts arrive in this chat from now on. Send /help for commands.")

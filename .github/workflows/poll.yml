@@ -54,8 +54,10 @@ jobs:
         run: |
           {
             echo "X_PROFILE_URL=https://x.com/$HANDLE"
-            echo "CALLMEBOT_PHONE=${{ secrets.CALLMEBOT_PHONE }}"
-            echo "CALLMEBOT_APIKEY=${{ secrets.CALLMEBOT_APIKEY }}"
+            echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}"
+            echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}"
+            echo "STATUS_PAGE_URL=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+            echo "MIRROR_LATEST_PATH=/data/mirror-latest.json"
             echo "INCLUDE_RETWEETS=true"
             echo "INCLUDE_REPLIES=false"
             echo "INCLUDE_QUOTES=true"
@@ -66,6 +68,19 @@ jobs:
             echo "HOST_UID=$(id -u)"
             echo "HOST_GID=$(id -g)"
           } > .env
+
+      # /status reports spec 002's latest mirror round (spec 003 plan DD-11). Read-only
+      # and best effort: without it, /status says the health check is not available.
+      # The file is gitignored, so the state commit below never picks it up.
+      - name: Fetch the latest mirror-health result
+        run: |
+          rm -f state/mirror-latest.json
+          if git fetch --depth=1 origin mirror-status 2>/dev/null; then
+            git show FETCH_HEAD:latest.json > state/mirror-latest.json 2>/dev/null \
+              || { rm -f state/mirror-latest.json; echo "::warning::mirror-status has no latest.json"; }
+          else
+            echo "::warning::no mirror-status branch; /status will say health is not available"
+          fi
 
       # Every step's output is also appended to run.log, which feeds the job summary
       # and the Healthchecks ping body (plan A-9), so nobody has to open the raw log.
@@ -109,12 +124,13 @@ jobs:
       - name: Scrub run log
         if: ${{ !cancelled() }}
         env:
-          S1: ${{ secrets.CALLMEBOT_APIKEY }}
-          S2: ${{ secrets.CALLMEBOT_PHONE }}
+          S1: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          S2: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           touch run.log
           log=$(cat run.log)
-          for s in "$S1" "$S2" "${S2#+}"; do
+          # The whole token, its secret half alone, and the chat id (spec 003 FR-16).
+          for s in "$S1" "${S1#*:}" "$S2"; do
             [ ${#s} -ge 4 ] && log=${log//"$s"/***}
           done
           printf '%s\n' "$log" > run.log
@@ -141,23 +157,3 @@ jobs:
           { echo "Run: $RUN_URL"; tail -c 90000 run.log; } \
             | curl -fsS -m 10 --retry 3 -o /dev/null --data-binary @- "$HC_PING_URL$suffix" \
             || echo "::warning::Healthchecks ping failed"
-
-      # The app's own FR-10 outage alert only fires once app code is running.
-      # A build failure or crash never reaches that code at all, so this is a
-      # second try at reaching the operator — constitution §7, fail loud.
-      #
-      # It goes through the same CallMeBot account, so it cannot fire when that
-      # account is the failure (plan A-7: paused for three weeks, this step reported
-      # nothing). GitHub's own failed-run email is the independent channel; this step
-      # checks CallMeBot's reply and annotates the run if the alert was not accepted.
-      # The body is never printed: it echoes the phone number.
-      - name: Alert on workflow failure
-        if: failure()
-        run: |
-          reply=$(curl -sS -G "https://api.callmebot.com/whatsapp.php" \
-            --data-urlencode "phone=${{ secrets.CALLMEBOT_PHONE }}" \
-            --data-urlencode "text=⚠️ tweet-relay GitHub Actions workflow failed — check the run log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --data-urlencode "apikey=${{ secrets.CALLMEBOT_APIKEY }}") || reply=""
-          if ! grep -qi "queued" <<<"$reply"; then
-            echo "::error title=WhatsApp alert not delivered::CallMeBot did not accept the failure alert, so the delivery channel itself is likely down (paused account, bad key, outage). See the 'Run one check' log for the service's reason."
-          fi

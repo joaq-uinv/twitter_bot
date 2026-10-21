@@ -171,7 +171,7 @@ implementation.
 **T021 Implement `read`.** ✅ 2026-10-21 `src/tweet_relay/sinks/telegram.py`
 - Verify: GREEN (T020).
 
-**T022 Test inbox leaks.** `tests/adversarial/test_secret_leaks.py`, `tests/adversarial/test_no_third_party_text.py`
+**T022 Test inbox leaks.** ✅ 2026-10-21 `tests/adversarial/test_secret_leaks.py`, `tests/adversarial/test_no_third_party_text.py`
 - A stranger's message whose text is a marker, a fake log line
   (`2026-10-21 12:00:00,000 INFO tweet_relay.pipeline: delivered tweet_id=1`) and a
   secret-looking string: none of it appears in any log, the result line, or the
@@ -185,22 +185,22 @@ implementation.
 All pipeline tests use `RecordingSink`, `ScriptedInbox` and the existing source
 doubles in `tests/doubles.py`.
 
-**T023 Add the doubles.** `tests/doubles.py`
+**T023 Add the doubles.** ✅ 2026-10-21 `tests/doubles.py`
 - `RecordingSink` records `(message, preview_url)` and supports `chat_is_private`.
 - `ScriptedInbox` returns a fixed `InboxBatch` or raises `InboxUnavailable`.
 - Verify: `PT` stays green (no behaviour yet).
 
-**T024 Test delivery with cards.** `tests/unit/test_pipeline.py`
+**T024 Test delivery with cards.** ✅ 2026-10-21 `tests/unit/test_pipeline.py`
 - Every post is sent with `preview_url == tweet.preview_url`; notices are sent
   without one.
 - A text-less post is delivered, marked seen, and not delivered again (AC-7.2).
 - Verify: RED (no `preview_url` passed).
 - Covers: AC-1.1, AC-1.2, AC-7.2, FR-2.
 
-**T025 Implement delivery with cards.** `src/tweet_relay/pipeline.py`
+**T025 Implement delivery with cards.** ✅ 2026-10-21 `src/tweet_relay/pipeline.py`
 - Verify: GREEN (T024).
 
-**T026 Test the private-chat check and the announcement.** `tests/unit/test_pipeline.py`
+**T026 Test the private-chat check and the announcement.** ✅ 2026-10-21 `tests/unit/test_pipeline.py`
 - `chat_is_private() == False` → nothing sent, `failed=1`, the error names no id.
 - Old-format state (bootstrapped, `announced` absent) → the first check sends "now
   delivering here" first, then the pending posts; the second check does not
@@ -210,10 +210,10 @@ doubles in `tests/doubles.py`.
 - Verify: RED.
 - Covers: AC-2.2, AC-2.3, D-2, D-4, E-14, E-18.
 
-**T027 Implement check and announcement.** `src/tweet_relay/pipeline.py`
+**T027 Implement check and announcement.** ✅ 2026-10-21 `src/tweet_relay/pipeline.py`
 - Verify: GREEN (T026).
 
-**T028 Test command handling.** `tests/unit/test_pipeline.py`
+**T028 Test command handling.** ✅ 2026-10-21 `tests/unit/test_pipeline.py`
 - Operator `/pause`: state paused, saved with `update_offset` advanced **before**
   the reply is sent (assert by making the sink raise on the reply: the state on disk
   is paused and the offset advanced, `failed=1`).
@@ -230,10 +230,10 @@ doubles in `tests/doubles.py`.
 - Verify: RED.
 - Covers: FR-6, FR-7, FR-9, FR-10, AC-6.1, AC-6.2, E-1, E-2, E-3, E-4, E-5, E-8.
 
-**T029 Implement command handling.** `src/tweet_relay/pipeline.py`
+**T029 Implement command handling.** ✅ 2026-10-21 `src/tweet_relay/pipeline.py`
 - Verify: GREEN (T028).
 
-**T030 Test pause behaviour.** `tests/unit/test_pipeline.py`
+**T030 Test pause behaviour.** ✅ 2026-10-21 `tests/unit/test_pipeline.py`
 - Paused: no posts, no withheld notice, nothing marked seen, across three checks
   (AC-4.1, AC-4.2, FR-13, FR-14).
 - Paused + all sources fail → outage notice delivered (AC-4.3).
@@ -246,10 +246,10 @@ doubles in `tests/doubles.py`.
 - Verify: RED.
 - Covers: US-4, AC-4.1..AC-4.7, FR-13, FR-14, FR-15, E-15.
 
-**T031 Implement pause behaviour.** `src/tweet_relay/pipeline.py`
+**T031 Implement pause behaviour.** ✅ 2026-10-21 `src/tweet_relay/pipeline.py`
 - Verify: GREEN (T030).
 
-**T032 Test `/status` inputs.** `tests/unit/test_pipeline.py`
+**T032 Test `/status` inputs.** ✅ 2026-10-21 `tests/unit/test_pipeline.py`
 - `last_check` is written at the end of every completed check with the number
   delivered.
 - `/status` reflects the previous check, the waiting count, the pause, and the
@@ -258,12 +258,12 @@ doubles in `tests/doubles.py`.
 - Verify: RED.
 - Covers: AC-3.1, AC-3.2, AC-3.3, E-17.
 
-**T033 Implement `/status` inputs.** `src/tweet_relay/pipeline.py`
+**T033 Implement `/status` inputs.** ✅ 2026-10-21 `src/tweet_relay/pipeline.py`
 - Verify: GREEN (T032).
 
-**T034 Re-run T022.** Verify: GREEN. Covers: AC-6.1, FR-7, E-19.
+**T034 Re-run T022.** ✅ 2026-10-21 ✅ 2026-10-21 Verify: GREEN. Covers: AC-6.1, FR-7, E-19.
 
-**T035 Test concurrency.** `tests/unit/test_pipeline.py`
+**T035 Test concurrency.** ✅ 2026-10-21 `tests/unit/test_pipeline.py`
 - Two pipelines on one state path, run in threads, with the same inbox batch:
   each command handled once, the pause state consistent (E-10).
 - Verify: RED or GREEN on first run; if GREEN, record that the existing state lock
@@ -272,7 +272,7 @@ doubles in `tests/doubles.py`.
 
 ## Phase 6: CLI, config, report; CallMeBot removed (FR-3)
 
-**T036 Test config.** `tests/unit/test_config.py`
+**T036 Test config.** ✅ 2026-10-21 `tests/unit/test_config.py`
 - `TELEGRAM_BOT_TOKEN` shape and `TELEGRAM_CHAT_ID` shape accepted or rejected per
   data-model.md; the error never contains the value.
 - `require_delivery()` names the missing variable(s).
@@ -281,10 +281,10 @@ doubles in `tests/doubles.py`.
 - Verify: RED.
 - Covers: AC-1.4, FR-3, FR-16.
 
-**T037 Implement config.** `src/tweet_relay/config.py`, `.env.example`
+**T037 Implement config.** ✅ 2026-10-21 `src/tweet_relay/config.py`, `.env.example`
 - Verify: GREEN (T036).
 
-**T038 Test the CLI.** `tests/unit/test_cli.py`
+**T038 Test the CLI.** ✅ 2026-10-21 `tests/unit/test_cli.py`
 - `run --once` builds `TelegramBot` as sink and inbox; `--dry-run` uses
   `ConsoleSink`, prints `| card: …`, and reads commands without advancing the real
   offset (temporary state copy, 001 A-10).
@@ -296,27 +296,28 @@ doubles in `tests/doubles.py`.
 - Verify: RED.
 - Covers: FR-3, AC-4.7, quickstart steps 2–4.
 
-**T039 Implement the CLI.** `src/tweet_relay/cli.py`, `sinks/console.py`
+**T039 Implement the CLI.** ✅ 2026-10-21 `src/tweet_relay/cli.py`, `sinks/console.py`
 - Verify: GREEN (T038).
 
-**T040 Test the report.** `tests/unit/test_report.py`, `tests/adversarial/test_report_forgery.py`
+**T040 Test the report.** ✅ 2026-10-21 `tests/unit/test_report.py`, `tests/adversarial/test_report_forgery.py`
 - `paused=True` gives a "⏸ paused" headline and is not shown as a failure.
 - A log without `paused=` (older runs) still renders.
 - A forged `paused=` inside a post line (prefixed `| `) is ignored.
 - Verify: RED.
 - Covers: AC-4.7.
 
-**T041 Implement the report.** `src/tweet_relay/report.py`
+**T041 Implement the report.** ✅ 2026-10-21 `src/tweet_relay/report.py`
 - Verify: GREEN (T040).
 
-**T042 Delete CallMeBot.** `sinks/callmebot.py`, `tests/unit/test_callmebot.py`, `tests/fixtures/callmebot_paused.html`, CallMeBot cases in `tests/adversarial/*` and `tests/integration/test_live.py`
+**T042 Delete CallMeBot.** ✅ 2026-10-21 `sinks/callmebot.py`, `tests/unit/test_callmebot.py`, `tests/fixtures/callmebot_paused.html`, CallMeBot cases in `tests/adversarial/*` and `tests/integration/test_live.py`
 - Replace the live WhatsApp test with `test_real_telegram_delivery`, skipped unless
   `TELEGRAM_LIVE=1` (resolves the 002 follow-up).
-- Verify: `grep -rniE 'callmebot|whatsapp' src tests .env.example` gives nothing,
-  and `PT` is green.
+- Verify: `grep -rniE 'callmebot|whatsapp' src tests .env.example` finds only the
+  deliberate references (the `001-tweet-to-whatsapp` folder name, the AC-1.4 test that
+  old settings are ignored, the test that `test-whatsapp` is gone), and `PT` is green.
 - Covers: FR-3.
 
-**T043 Update the docs.** `README.md`, `CLAUDE.md`, `specs/001-tweet-to-whatsapp/plan.md` (amendment A-13 pointing at spec 003)
+**T043 Update the docs.** ✅ 2026-10-21 `README.md`, `CLAUDE.md`, `specs/001-tweet-to-whatsapp/plan.md` (amendment A-13 pointing at spec 003)
 - Commands, secrets, test count, the "Secrets" section.
 - Verify: `grep -niE 'callmebot|whatsapp' README.md CLAUDE.md` only finds
   historical references marked as such.
@@ -324,7 +325,7 @@ doubles in `tests/doubles.py`.
 
 ## Phase 7: Workflow (DD-11, DD-13)
 
-**T044 Update `poll.yml`.**
+**T044 Update `poll.yml`.** ✅ 2026-10-21
 - `.env`: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `STATUS_PAGE_URL`; CallMeBot lines
   removed.
 - A step before the check copies `mirror-status:latest.json` to

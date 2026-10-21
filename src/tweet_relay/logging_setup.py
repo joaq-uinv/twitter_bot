@@ -1,8 +1,9 @@
 """Logging configured so a secret cannot reach a log record (FR-13).
 
-This exists because of a real leak found by tests/unit/test_callmebot.py: httpx logs
-every request URL at INFO, and CallMeBot requires the API key as a query parameter, so
-the key appeared in ordinary application logs. Silencing httpx alone would be brittle
+This exists because of a real leak found in 001 (plan A-3): httpx logs every request
+URL at INFO, and the first delivery service required its API key as a query
+parameter, so the key appeared in ordinary application logs. The bot token is in the
+URL path now (spec 003 research R-3), so the same holds. Silencing httpx alone would be brittle
 — any future library could do the same — so redaction is applied at the root handler
 as a backstop as well.
 """

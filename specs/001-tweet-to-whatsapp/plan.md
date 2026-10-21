@@ -504,3 +504,15 @@ serves the manifest without authentication. Its rate limits are not documented.
 Rejected: caching the built image in GitHub's own registry (ghcr.io). It avoids
 third-party limits entirely, but it needs `packages: write`, a cache-key scheme and
 login steps in both workflows (§8). It is the next step if this mirror rate-limits too.
+
+## Amendment A-13 — delivery channel replaced by spec 003 (2026-10-21)
+
+CallMeBot's free quota ran out on 2026-10-20 (`You have 0 messages left … subscribe`),
+so every check failed from then on. Spec `003-bot-chat-delivery` replaces the channel
+with a private Telegram bot chat and adds operator commands. Everything in this plan
+that names CallMeBot (DD for the sink, A-3, A-5, A-7, A-11's refusal codes) is
+historical from here; `MessageSink` is now specified by
+`specs/003-bot-chat-delivery/contracts/message-sink.md`. The relay logic (dedup,
+ordering, cap, outage notice, minimal-form retry) is unchanged. Spec 003 also stops
+dropping posts that have no text of their own (003 US-7), changing this spec's
+treatment of them as malformed.

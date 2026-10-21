@@ -1,6 +1,7 @@
 # tweet-relay
 
-Relays new posts from a configurable X profile to a single WhatsApp number.
+Relays new posts from a configurable X profile to a private Telegram chat with a bot
+(spec 003; it replaced WhatsApp/CallMeBot in October 2026).
 Built **Spec-Driven** (SDD) as a learning exercise — the process is as much the
 deliverable as the code.
 
@@ -51,7 +52,8 @@ docker compose run --rm --entrypoint python relay -m pytest            # full su
 docker compose run --rm --entrypoint python relay -m pytest tests/adversarial -v
 docker compose run --rm relay check-source      # which mirror answered, what parsed
 docker compose run --rm relay run --once --dry-run
-docker compose run --rm relay test-whatsapp     # sends one real message
+docker compose run --rm relay find-chat-id      # setup: list chats that wrote to the bot
+docker compose run --rm relay test-delivery     # sends one real message
 docker compose up -d                            # local/dev only, see below
 docker compose logs -f relay
 ```
@@ -67,7 +69,7 @@ the Docker volume to git commits, so `state/seen.json` is tracked (via `.gitigno
 ```bash
 gh workflow run poll.yml -f dry_run=true   # manual verification, sends nothing
 gh run watch
-gh secret list                             # confirm CALLMEBOT_PHONE/APIKEY are set
+gh secret list                             # confirm TELEGRAM_BOT_TOKEN/CHAT_ID are set
 ```
 
 `docker compose up -d` still works for local development, but never run it against
@@ -91,5 +93,7 @@ These were established by probing live services on 2026-09-15. Full evidence in
 
 ## Secrets
 
-`.env` is gitignored and holds `CALLMEBOT_APIKEY`. Never log it, never put it in an
-exception message, never commit it. `tests/adversarial/` asserts this.
+`.env` is gitignored and holds `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. Never log
+them, never put them in an exception message, never commit them. The token is in the
+request URL path, so never pass on an httpx exception's text. `tests/adversarial/`
+asserts this, and a conftest guard fails any unit test that opens a socket.

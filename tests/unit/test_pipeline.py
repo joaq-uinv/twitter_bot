@@ -283,7 +283,7 @@ class RefusingSink(RecordingSink):
         super().__init__()
         self.poison, self.refuse_minimal, self.plain_failure = poison, refuse_minimal, plain_failure
 
-    def send(self, message):
+    def send(self, message, *, preview_url=None):
         from tweet_relay.models import DeliveryFailed, MessageRejected
         self.attempts += 1
         minimal = "(its text could not be delivered)" in message

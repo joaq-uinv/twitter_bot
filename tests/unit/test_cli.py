@@ -6,14 +6,12 @@ from tweet_relay import cli
 
 def test_missing_delivery_credentials_exits_two_with_guidance(monkeypatch, capsys):
     monkeypatch.setenv("X_PROFILE_URL", "@santtiagom_")
-    monkeypatch.setenv("CALLMEBOT_PHONE", "")
-    monkeypatch.setenv("CALLMEBOT_APIKEY", "")
     monkeypatch.setattr(cli, "CONFIG_ERROR_PAUSE", 0)
     with pytest.raises(SystemExit) as exc:
         cli.main(["run", "--once"])
     assert exc.value.code == 2
     err = capsys.readouterr().err
-    assert "CALLMEBOT_PHONE" in err and "callmebot" in err.lower()
+    assert "TELEGRAM_BOT_TOKEN" in err and "quickstart" in err
 
 
 def test_malformed_profile_url_exits_two(monkeypatch, capsys):
@@ -26,10 +24,8 @@ def test_malformed_profile_url_exits_two(monkeypatch, capsys):
 
 
 def test_dry_run_needs_no_delivery_credentials(monkeypatch):
-    """Diagnostics must work before CallMeBot is set up."""
+    """Diagnostics must work before the bot is set up."""
     monkeypatch.setenv("X_PROFILE_URL", "@santtiagom_")
-    monkeypatch.setenv("CALLMEBOT_PHONE", "")
-    monkeypatch.setenv("CALLMEBOT_APIKEY", "")
     cfg = cli.Config()
     cfg.require_delivery  # exists
     with pytest.raises(ValueError):
@@ -84,7 +80,7 @@ def test_summarize_renders_stdin_without_any_configuration(monkeypatch, capsys):
 
 # --- dry runs (plan A-10) ---
 
-def test_summary_line_states_dry_run(monkeypatch, config, capsys):
+def test_summary_line_states_dry_run(monkeypatch, config, capsys, fake_bot):
     from tweet_relay.pipeline import RunResult
     class FakePipeline:
         def __init__(self, *a, **kw): pass
@@ -94,7 +90,7 @@ def test_summary_line_states_dry_run(monkeypatch, config, capsys):
     assert "dry_run=True" in capsys.readouterr().out
 
 
-def test_dry_run_never_changes_delivery_history(monkeypatch, config):
+def test_dry_run_never_changes_delivery_history(monkeypatch, config, fake_bot):
     """I-4: the documented "sends nothing" check must also *record* nothing, or the
     posts it rendered are marked seen and never delivered for real."""
     import pathlib
@@ -111,7 +107,7 @@ def test_dry_run_never_changes_delivery_history(monkeypatch, config):
     assert load_state(config.STATE_PATH, "santtiagom_").is_new(2)
 
 
-def test_dry_run_with_no_history_leaves_none_behind(monkeypatch, config):
+def test_dry_run_with_no_history_leaves_none_behind(monkeypatch, config, fake_bot):
     import pathlib
     from tests.doubles import FakeSource, tweet
     monkeypatch.setattr(cli, "NitterRssSource", lambda cfg: FakeSource([tweet(1)]))
@@ -191,3 +187,127 @@ def test_probe_mirrors_needs_its_arguments(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         cli.main(["probe-mirrors"])
     assert exc.value.code == 2
+
+
+# --- spec 003: the bot chat (T038) ---
+
+class FakeBot:
+    """Stands in for TelegramBot so no test touches the network (§5)."""
+    instances: list = []
+
+    def __init__(self, token, chat_id, *, timeout, private=True, inbox=None, **kw):
+        self.token, self.chat_id, self.private = token, chat_id, private
+        self.inbox, self.sent = inbox or [], []
+        FakeBot.instances.append(self)
+
+    def send(self, message, *, preview_url=None):
+        self.sent.append(message)
+
+    def chat_is_private(self):
+        return self.private
+
+    def read(self, offset):
+        from tweet_relay.commands import InboxBatch
+        self.read_offset = offset
+        return InboxBatch(messages=list(self.inbox), next_offset=offset)
+
+
+@pytest.fixture
+def fake_bot(monkeypatch):
+    FakeBot.instances = []
+    monkeypatch.setattr(cli, "TelegramBot", FakeBot)
+    return FakeBot
+
+
+def _capture_pipeline(monkeypatch):
+    from tweet_relay.pipeline import RunResult
+    seen = {}
+
+    class FakePipeline:
+        def __init__(self, config, source, sink, **kw):
+            seen.update(sink=sink, **kw)
+
+        def run_once(self):
+            return RunResult(paused=True)
+    monkeypatch.setattr(cli, "Pipeline", FakePipeline)
+    return seen
+
+
+def test_a_real_run_uses_the_bot_for_delivery_and_commands(monkeypatch, config, fake_bot):
+    seen = _capture_pipeline(monkeypatch)
+    cli.cmd_run(config, once=True, dry_run=False)
+    bot = fake_bot.instances[0]
+    assert seen["sink"] is bot and seen["inbox"] is bot
+    assert seen["operator_chat_id"] == 111222333
+    assert seen["status_page_url"] == config.STATUS_PAGE_URL
+    assert seen["mirror_latest_path"] == config.MIRROR_LATEST_PATH
+
+
+def test_a_dry_run_prints_and_reads_commands_from_a_copy(monkeypatch, config, fake_bot):
+    from tweet_relay.sinks.console import ConsoleSink
+    seen = _capture_pipeline(monkeypatch)
+    cli.cmd_run(config, once=True, dry_run=True)
+    assert isinstance(seen["sink"], ConsoleSink) and seen["inbox"] is fake_bot.instances[0]
+
+
+def test_a_dry_run_without_a_bot_reads_no_commands(monkeypatch, config, fake_bot):
+    from pydantic import SecretStr
+    seen = _capture_pipeline(monkeypatch)
+    cli.cmd_run(config.model_copy(update={"TELEGRAM_BOT_TOKEN": SecretStr("")}),
+                once=True, dry_run=True)
+    assert seen["inbox"] is None and fake_bot.instances == []
+
+
+def test_the_result_line_states_the_pause(monkeypatch, config, fake_bot, capsys):
+    """003 AC-4.7."""
+    _capture_pipeline(monkeypatch)
+    assert cli.cmd_run(config, once=True, dry_run=False) == 0
+    assert "paused=True" in capsys.readouterr().out
+
+
+def test_test_delivery_sends_one_message(config, fake_bot, capsys):
+    assert cli.cmd_test_delivery(config) == 0
+    assert len(fake_bot.instances[0].sent) == 1 and "✓ Sent" in capsys.readouterr().out
+
+
+def test_test_delivery_refuses_a_chat_that_is_not_private(monkeypatch, config, capsys):
+    """D-4, E-14."""
+    monkeypatch.setattr(cli, "TelegramBot", lambda *a, **kw: FakeBot(*a, private=False, **kw))
+    assert cli.cmd_test_delivery(config) == 1
+    assert "not a private chat" in capsys.readouterr().err
+
+
+def test_find_chat_id_lists_private_chats_without_confirming(monkeypatch, config, capsys):
+    from tests.doubles import msg
+    from pydantic import SecretStr
+    inbox = [msg(5, "hi", chat_id=4242), msg(6, "yo", chat_id=-100, chat_type="group"),
+             msg(7, "again", chat_id=4242)]
+    monkeypatch.setattr(cli, "TelegramBot", lambda *a, **kw: FakeBot(*a, inbox=inbox, **kw))
+    cfg = config.model_copy(update={"TELEGRAM_CHAT_ID": SecretStr("")})
+    assert cli.cmd_find_chat_id(cfg) == 0
+    out = capsys.readouterr().out
+    assert "4242" in out and "-100" not in out and "hi" not in out
+    assert FakeBot.instances[-1].read_offset == 0, "offset 0 confirms nothing"
+    assert config.TELEGRAM_BOT_TOKEN.get_secret_value() not in out
+
+
+def test_the_old_test_command_is_gone():
+    with pytest.raises(SystemExit):
+        cli.main(["test-whatsapp"])
+
+
+def test_bot_secrets_are_registered_for_log_redaction(monkeypatch, config):
+    """FR-16, DD-8: the backstop filter knows both secrets."""
+    got = {}
+    monkeypatch.setattr(cli.logging_setup, "configure",
+                        lambda level, secrets: got.setdefault("secrets", secrets))
+    cli._setup(config)
+    assert config.TELEGRAM_BOT_TOKEN.get_secret_value() in got["secrets"]
+    assert "111222333" in got["secrets"]
+
+
+def test_the_network_guard_stops_a_real_call():
+    """conftest.no_network: proves the guard is live (it caught T039's slip)."""
+    import httpx
+    with pytest.raises(Exception, match="network connection"):
+        httpx.get("https://api.telegram.org/", timeout=2)

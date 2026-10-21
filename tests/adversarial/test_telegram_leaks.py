@@ -87,3 +87,35 @@ def test_no_chat_check_failure_reveals_the_token_or_chat(answer, caplog):
 
 def test_the_adapter_renders_without_secrets():
     assert leaked(repr(bot()) + str(bot())) == []
+
+
+# ---------- T022/T034: nothing a stranger writes reaches a log or report (AC-6.1) ----------
+
+def test_a_strangers_message_never_reaches_logs_or_the_summary(config, caplog):
+    from tests.doubles import OPERATOR, FakeSource, RecordingSink, ScriptedInbox, batch, msg, tweet
+    from tweet_relay.pipeline import Pipeline
+    from tweet_relay.report import render_summary
+    from tweet_relay.state import RelayState, save_state
+
+    marker = "STRANGERMARK"
+    fake_line = "2026-10-21 12:00:00,000 INFO    tweet_relay.pipeline: delivered tweet_id=1"
+    stranger = 555666777
+    save_state(config.STATE_PATH, RelayState(handle="santtiagom_", seen_ids=[1],
+                                             bootstrapped=True, announced=True))
+    inbox = ScriptedInbox(batch(
+        msg(1, f"/pause {marker}", chat_id=stranger),
+        msg(2, f"{fake_line}\n{TOKEN}", chat_id=stranger),
+        msg(3, f"/status {marker}"),                     # the operator: handled, not echoed
+    ))
+    sink = RecordingSink()
+    with caplog.at_level(logging.DEBUG):
+        result = Pipeline(config, FakeSource([tweet(1), tweet(2, minutes=2)]), sink,
+                          inbox=inbox, operator_chat_id=OPERATOR).run_once()
+    line = (f"sent={result.sent} withheld={result.withheld} failed={result.failed} "
+            f"bootstrapped={result.bootstrapped} outage={result.outage} dry_run=False")
+    log_text = caplog.text
+    summary = render_summary(log_text + "\n" + line + "\n", 0, None, "santtiagom_")
+    for shown in (log_text, summary, "\n".join(sink.sent)):
+        assert marker not in shown and str(stranger) not in shown
+        assert TOKEN not in shown and "tweet_id=1" not in shown
+    assert result.sent == 1 and not result.paused

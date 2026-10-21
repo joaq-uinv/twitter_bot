@@ -8,8 +8,7 @@ pytestmark = pytest.mark.live
 
 
 def live_config(**kw):
-    return Config(X_PROFILE_URL="https://x.com/santtiagom_",
-                  CALLMEBOT_PHONE="+34600111222", CALLMEBOT_APIKEY="unused", **kw)
+    return Config(X_PROFILE_URL="https://x.com/santtiagom_", **kw)
 
 
 def test_at_least_one_real_mirror_serves_the_account():
@@ -36,12 +35,15 @@ def test_each_pinned_mirror_individually(instance):
     assert tweets
 
 
-def test_real_whatsapp_delivery():
-    """Requires real credentials in the environment; skipped otherwise."""
+def test_real_telegram_delivery():
+    """Sends one real message. Runs only with TELEGRAM_LIVE=1 and real credentials, so
+    a plain `-m live` run can never message the operator by accident (002 follow-up)."""
+    import os
+    if os.environ.get("TELEGRAM_LIVE") != "1":
+        pytest.skip("set TELEGRAM_LIVE=1 to send a real message")
+    from tweet_relay.cli import _bot
     cfg = Config()
-    try:
-        cfg.require_delivery()
-    except ValueError:
-        pytest.skip("delivery credentials not configured")
-    from tweet_relay.sinks.callmebot import CallMeBotSink
-    CallMeBotSink(cfg, pace_seconds=0).send("🧪 tweet-relay integration test")
+    cfg.require_delivery()
+    bot = _bot(cfg)
+    assert bot.chat_is_private()
+    bot.send("🧪 tweet-relay integration test")

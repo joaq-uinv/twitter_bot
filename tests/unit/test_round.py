@@ -102,8 +102,8 @@ def test_tracker_failure_still_saves_and_reports_check_broken(cfg):
 
 def test_relay_state_and_sink_are_never_touched(cfg, monkeypatch):
     """FR-2: read-only with respect to delivery."""
-    from tweet_relay.sinks import callmebot
-    monkeypatch.setattr(callmebot.CallMeBotSink, "__init__",
+    from tweet_relay.sinks import telegram
+    monkeypatch.setattr(telegram.TelegramBot, "__init__",
                         lambda *a, **k: pytest.fail("the probe built a delivery sink"))
     _run(cfg, ALL_OK)
     assert not pathlib.Path(cfg.STATE_PATH).exists()
