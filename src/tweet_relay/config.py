@@ -52,30 +52,71 @@ def extract_handle(raw: str) -> str:
     return value
 
 
-def _validate_instance(url: str) -> str:
-    """Reject anything that could point the fetcher at internal infrastructure (E-20)."""
-    url = url.strip().rstrip("/")
-    parsed = urlparse(url)
-    if parsed.scheme != "https":
-        raise ValueError(f"instance must use https, got {url!r}")
-    if not parsed.hostname:
-        raise ValueError(f"instance has no host: {url!r}")
+HOST_RE = re.compile(
+    r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$")
 
-    host = parsed.hostname
-    candidates = []
+
+def non_global_address(host: str):
+    """The first resolved address of `host` that is not globally routable, or None.
+
+    `not is_global` rather than `is_private`: in Python 3.12 carrier-grade NAT space
+    (100.64.0.0/10) is neither private nor global (spec 002 research R-3). A name that
+    does not resolve returns None; whoever connects later fails safely.
+    """
     try:
-        candidates.append(ipaddress.ip_address(host))
+        infos = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
+    except OSError:
+        return None
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if not ip.is_global:
+            return ip
+    return None
+
+
+def validate_mirror_url(url: str, *, resolve: bool = True) -> str:
+    """The single strict gate for mirror addresses (001 E-20, spec 002 FR-11, DD-3).
+
+    Accepts only `https://<host>`, optionally with a trailing slash: no userinfo,
+    port, path, query, fragment or IP literal, and a strictly limited hostname
+    charset. Every resolved address must be global. Returns `https://<host>`,
+    lower-cased.
+
+    `resolve=False` checks shape only. Discovery uses it (spec 002 review #5): a hostile
+    list of up to 1000 names behind slow DNS must not stall the round, and the address
+    check runs anyway at probe time for the few hosts actually probed (DD-4).
+    """
+    raw = (url or "").strip()
+    parsed = urlparse(raw)
+    if parsed.scheme != "https":
+        raise ValueError(f"mirror must use https, got {raw!r}")
+    netloc = parsed.netloc
+    if not netloc or "@" in netloc or ":" in netloc:
+        raise ValueError(f"mirror must be a bare host (no credentials or port): {raw!r}")
+    if parsed.path not in ("", "/") or parsed.params or parsed.query or parsed.fragment:
+        raise ValueError(f"mirror must be a bare host (no path or query): {raw!r}")
+    host = netloc.lower()
+    try:
+        ipaddress.ip_address(host)
     except ValueError:
-        try:
-            infos = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
-            candidates = [ipaddress.ip_address(i[4][0]) for i in infos]
-        except OSError:
-            candidates = []  # unresolvable now; the fetcher will fail safely later
-    for ip in candidates:
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
-            raise ValueError(f"instance resolves to a non-public address: {url!r} -> {ip}")
-    return url
+        pass
+    else:
+        raise ValueError(f"mirror must be named, not an IP literal: {raw!r}")
+    if not HOST_RE.match(host):
+        raise ValueError(f"mirror host has invalid characters or length: {raw!r}")
+    ip = non_global_address(host) if resolve else None
+    if ip is not None:
+        raise ValueError(f"mirror resolves to a non-public address: {raw!r} -> {ip}")
+    return f"https://{host}"
+
+
+def _validate_instance(url: str) -> str:
+    """Reject anything that could point the fetcher at internal infrastructure (E-20).
+
+    Tightened by spec 002 DD-3: delegates to the one strict validator.
+    """
+    return validate_mirror_url(url)
 
 
 class Config(BaseSettings):

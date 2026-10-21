@@ -39,3 +39,73 @@ class RecordingSink:
         if self.attempts in self.fail_on:
             raise DeliveryFailed(f"simulated failure on send #{self.attempts}")
         self.sent.append(message)
+
+
+# ---------- spec 002 mirror-health doubles ----------
+
+class FixtureMirrorProbe:
+    """Maps host -> ProbeOutcome; records the probe order (DD-12: sequential)."""
+    def __init__(self, outcomes):
+        self.outcomes = outcomes
+        self.calls: list[str] = []
+
+    def probe(self, host, handle):
+        self.calls.append(host)
+        return self.outcomes[host]
+
+    def close(self):
+        pass
+
+
+class StaticDirectory:
+    def __init__(self, read=None, error=None):
+        self.read, self.error = read, error
+
+    def list(self):
+        if self.error:
+            raise self.error
+        return self.read
+
+
+class MemoryHistoryStore:
+    def __init__(self, history=None):
+        from tweet_relay.mirrors.history import EMPTY_LATEST, History
+        self.history = history or History(results=[], latest=EMPTY_LATEST)
+        self.saved = None
+
+    def load(self):
+        return self.history
+
+    def save(self, history, now):
+        self.saved = history
+        self.history = history
+
+
+class FakeTracker:
+    def __init__(self, open_now=None, fail=False):
+        self.open_now = dict(open_now or {})
+        self.fail = fail
+        self.calls: list[tuple] = []
+
+    def _check(self):
+        if self.fail:
+            from tweet_relay.mirrors.tracker import TrackerUnavailable
+            raise TrackerUnavailable("simulated")
+
+    def open_warnings(self):
+        self._check()
+        return dict(self.open_now)
+
+    def open(self, host, since, reason):
+        self._check()
+        self.calls.append(("open", host, since, reason))
+        self.open_now[host] = since
+
+    def update(self, host, reason):
+        self._check()
+        self.calls.append(("update", host, reason))
+
+    def close(self, host):
+        self._check()
+        self.calls.append(("close", host))
+        self.open_now.pop(host, None)

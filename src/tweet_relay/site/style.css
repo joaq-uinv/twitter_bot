@@ -1,0 +1,46 @@
+:root {
+  --bg: #fbfbfa; --fg: #1d1d1b; --muted: #6b6b66; --line: #e3e2de;
+  --ok: #1f7a3e; --ok-bg: #e8f5ec; --bad: #b42318; --bad-bg: #fdecea;
+  --warn-bg: #fff4e0; --none: #d9d8d3;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615; --fg: #ecebe8; --muted: #9a9993; --line: #2c2c2a;
+    --ok: #5fd08a; --ok-bg: #16301f; --bad: #ff8a7a; --bad-bg: #3a1a16;
+    --warn-bg: #3a2d12; --none: #3a3a37;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+header, main, footer { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+header { padding-top: 24px; }
+h1 { font-size: 1.6rem; margin: 0; }
+h2 { font-size: 1.1rem; margin: 28px 0 8px; }
+.sub, .muted, footer { color: var(--muted); font-size: 0.9rem; }
+.banner { border-radius: 8px; padding: 14px 16px; margin-top: 16px; font-weight: 600; }
+.banner.good { background: var(--ok-bg); color: var(--ok); }
+.banner.risk { background: var(--bad-bg); color: var(--bad); }
+.banner.stale { background: var(--warn-bg); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; }
+td.host { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+td.ok { color: var(--ok); }
+td.bad { color: var(--bad); }
+.tag { margin-left: 8px; font-size: 0.75rem; color: var(--muted); border: 1px solid var(--line);
+       border-radius: 4px; padding: 0 4px; font-family: system-ui, sans-serif; }
+.trend { display: inline-flex; gap: 2px; vertical-align: middle; }
+.t { width: 5px; height: 14px; border-radius: 1px; background: var(--none); }
+.t.ok { background: var(--ok); }
+.t.bad { background: var(--bad); }
+ul { padding-left: 20px; }
+a { color: inherit; }
+footer { padding-bottom: 32px; margin-top: 24px; }
+@media (max-width: 520px) {
+  th:nth-child(4), td:nth-child(4), th:nth-child(5), td:nth-child(5) { display: none; }
+  .trend .t:nth-child(-n+20) { display: none; }
+}

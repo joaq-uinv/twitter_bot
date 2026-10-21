@@ -1,0 +1,2 @@
+HTTP/2 307 
+location: /santtiagom_/rss?__goaway_challenge=cookie&__goaway_id=fac5687a1a9dabc6326784f066072eb0
