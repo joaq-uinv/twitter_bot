@@ -1,6 +1,7 @@
 {
   "handle": "santtiagom_",
   "seen_ids": [
+    2116158305336746117,
     2115941691404509329,
     2115934285983014983,
     2115913925556408635,
@@ -256,12 +257,12 @@
   ],
   "bootstrapped": true,
   "outage_notified": false,
-  "last_success": "2026-10-30T07:43:47.432504+00:00",
+  "last_success": "2026-10-30T14:33:33.476435+00:00",
   "paused_since": null,
   "update_offset": 195385410,
   "announced": true,
   "last_check": {
-    "at": "2026-10-30T07:43:47.842073+00:00",
-    "sent": 0
+    "at": "2026-10-30T14:33:35.253044+00:00",
+    "sent": 1
   }
 }
