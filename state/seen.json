@@ -304,12 +304,12 @@
   ],
   "bootstrapped": true,
   "outage_notified": false,
-  "last_success": "2026-11-03T02:21:59.976602+00:00",
+  "last_success": "2026-11-03T09:52:19.497970+00:00",
   "paused_since": null,
   "update_offset": 195385410,
   "announced": true,
   "last_check": {
-    "at": "2026-11-03T02:22:08.788280+00:00",
-    "sent": 6
+    "at": "2026-11-03T09:52:19.769638+00:00",
+    "sent": 0
   }
 }
