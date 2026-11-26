@@ -303,13 +303,13 @@
     2113762549447406008
   ],
   "bootstrapped": true,
-  "outage_notified": false,
+  "outage_notified": true,
   "last_success": "2026-11-26T04:09:56.330552+00:00",
   "paused_since": null,
   "update_offset": 195385410,
   "announced": true,
   "last_check": {
-    "at": "2026-11-26T04:10:00.737022+00:00",
-    "sent": 3
+    "at": "2026-11-26T13:53:58.641814+00:00",
+    "sent": 0
   }
 }
