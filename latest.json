@@ -1,0 +1,37 @@
+{
+  "round": {
+    "t": "2026-11-28T19:57:43+00:00",
+    "reference": null,
+    "in_use_healthy": 0,
+    "in_use_total": 4,
+    "at_risk": true
+  },
+  "episode": {
+    "at_risk_since": "2026-11-27T08:22:22+00:00"
+  },
+  "discovery": {
+    "last_ok": "2026-11-28T19:57:43+00:00",
+    "accepted": 13,
+    "rejected": 0,
+    "candidates": [
+      "nitter.netbub.com",
+      "nitter.catsarch.com",
+      "shitter.thepixora.com",
+      "nitter.mie.foundation",
+      "nitter.r4fo.com",
+      "nitter.tiekoetter.com",
+      "nitter.click",
+      "nitterts.pages.dev",
+      "nitter.kareem.one",
+      "nohup.cz",
+      "nitter.femboy.delivery",
+      "nitter.privacyredirect.com",
+      "nitter.ip6arpa.uk"
+    ]
+  },
+  "warnings": {
+    "nitter.kareem.one": "2026-11-28T07:43:21+00:00",
+    "nitter.jaydenha.uk": "2026-11-24T09:50:00+00:00",
+    "nitter.meowing.monster": "2026-11-05T06:40:56+00:00"
+  }
+}
